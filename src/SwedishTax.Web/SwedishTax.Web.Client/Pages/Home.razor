@@ -1,0 +1,266 @@
+﻿@page "/"
+@using System.Globalization
+
+<PageTitle>Swedish Tax 2026</PageTitle>
+
+<main class="calculator">
+    <header class="page-header">
+        <div>
+            <h1>Swedish Tax 2026</h1>
+            <p>Preliminary income tax</p>
+        </div>
+        <span class="year-label">Income year 2026</span>
+    </header>
+
+    <section class="input-panel" aria-labelledby="inputs-heading">
+        <h2 id="inputs-heading">Inputs</h2>
+        <div class="controls">
+            <fieldset class="control period-control">
+                <legend>Income basis</legend>
+                <div class="segmented-control">
+                    <button type="button"
+                            class="@(period == IncomePeriod.Monthly ? "selected" : null)"
+                            aria-pressed="@(period == IncomePeriod.Monthly)"
+                            @onclick="() => period = IncomePeriod.Monthly">
+                        Monthly
+                    </button>
+                    <button type="button"
+                            class="@(period == IncomePeriod.Annual ? "selected" : null)"
+                            aria-pressed="@(period == IncomePeriod.Annual)"
+                            @onclick="() => period = IncomePeriod.Annual">
+                        Annual
+                    </button>
+                </div>
+            </fieldset>
+
+            <div class="control compact-control selector-help-control">
+                <div class="control-heading">
+                    <label for="tax-table">Tax table</label>
+                </div>
+                <select id="tax-table" aria-describedby="tax-table-help" @bind="table">
+                    @for (var option = TaxCalculator.MinTaxTable;
+                          option <= TaxCalculator.MaxTaxTable;
+                          option++)
+                    {
+                        <option value="@option">@option</option>
+                    }
+                </select>
+                <aside id="tax-table-help" class="selector-help-panel table-help-panel" role="tooltip">
+                    <strong>Find your tax table</strong>
+                    <p>
+                        On skatteverket.se, open <b>Mina sidor</b> and select
+                        <b>A-skattsedel, skattetabell och jämkningsbeslut</b>. Open your A-tax
+                        certificate as a PDF; it states which table your payer should use.
+                    </p>
+                    <small>The table is based on where you were registered on 1 November of the preceding year.</small>
+                </aside>
+            </div>
+
+            <div class="control column-control selector-help-control">
+                <div class="control-heading">
+                    <label for="tax-column">Column</label>
+                </div>
+                <select id="tax-column" aria-describedby="column-help" @bind="column">
+                    @foreach (var option in Enum.GetValues<TaxColumn>())
+                    {
+                        <option value="@option">Column @((byte)option)</option>
+                    }
+                </select>
+                <aside id="column-help" class="selector-help-panel column-help-panel" role="tooltip">
+                    <strong>2026 table columns</strong>
+                    <ol>
+                        <li><b>Salary, under 66.</b> Work income eligible for the earned-income tax credit.</li>
+                        <li><b>Pension, 66 or older.</b> No general pension contribution or earned-income tax credit.</li>
+                        <li><b>Salary, 66 or older.</b> Work income eligible for the enhanced earned-income tax credit.</li>
+                        <li><b>Sickness or activity compensation, under 66.</b> Eligible for its specific tax reduction.</li>
+                        <li><b>Other pensionable compensation.</b> For example unemployment benefits; no earned-income tax credit.</li>
+                        <li><b>Pension, under 66.</b> No general pension contribution or earned-income tax credit.</li>
+                    </ol>
+                    <small>Age is determined at the beginning of the income year.</small>
+                </aside>
+            </div>
+
+            <label class="control income-control">
+                <span>@(period == IncomePeriod.Monthly ? "Monthly income" : "Annual income")</span>
+                <div class="income-input">
+                    <input type="number"
+                           min="0"
+                           max="100000000"
+                           step="1"
+                           inputmode="numeric"
+                           @bind="income"
+                           @bind:event="oninput" />
+                    <span>SEK</span>
+                </div>
+            </label>
+        </div>
+    </section>
+
+    @if (Calculation is { } calculation)
+    {
+        <section class="results" aria-labelledby="result-heading">
+            <div class="section-heading">
+                <h2 id="result-heading">Tax result</h2>
+                <span>Table @table / Column @((byte)column)</span>
+            </div>
+
+            <div class="summary-grid">
+                <article class="summary-item official-summary">
+                    <span>Official table</span>
+                    <strong>@FormatDeduction(calculation.TableDeduction)</strong>
+                    <div class="marginal-rate selector-help-control"
+                         tabindex="0"
+                         aria-describedby="marginal-rate-help">
+                        <span>Marginal tax</span>
+                        <b>@calculation.MarginalRate.ToString("F1", CultureInfo.InvariantCulture)%</b>
+                        <aside id="marginal-rate-help"
+                               class="selector-help-panel marginal-help-panel"
+                               role="tooltip">
+                            <h4>How Skatteverket calculates marginal tax</h4>
+                            <p>
+                                Skatteverket recommends comparing table withholding for your current monthly
+                                income with the withholding at 1,000 SEK more. This estimates the tax on a
+                                potential next 1,000 SEK.
+                            </p>
+                            <p>The additional withholding is divided by 1,000 and shown as a percentage.</p>
+                        </aside>
+                    </div>
+                </article>
+                <article class="summary-item formula-summary">
+                    <span>Annual formula</span>
+                    <strong>@FormatSek(calculation.AnnualTax.Total)</strong>
+                </article>
+                <article class="summary-item net-summary">
+                    <span>Monthly net</span>
+                    <strong>@FormatSek(calculation.FormulaMonthlyNet)</strong>
+                </article>
+            </div>
+
+            <div class="data-section">
+                <h3>Table and formula</h3>
+                <dl class="value-list comparison-list">
+                    <div><dt>Monthly gross income</dt><dd>@FormatSek(calculation.MonthlyIncome)</dd></div>
+                    <div><dt>Annual gross income</dt><dd>@FormatSek(calculation.AnnualIncome)</dd></div>
+                    <div><dt>Official table deduction</dt><dd>@FormatDeduction(calculation.TableDeduction)</dd></div>
+                    <div><dt>Formula tax per month</dt><dd>@FormatSek(calculation.FormulaMonthlyTax)</dd></div>
+                    <div><dt>Formula effective rate</dt><dd>@calculation.EffectiveRate.ToString("F2", CultureInfo.InvariantCulture)%</dd></div>
+                    <div><dt>Formula minus table</dt><dd>@FormatDifference(calculation)</dd></div>
+                </dl>
+            </div>
+
+            <div class="data-section breakdown-section">
+                <h3>Annual formula breakdown</h3>
+                <dl class="value-list breakdown-list">
+                    <div><dt>Assessed income</dt><dd>@FormatSek(calculation.AnnualTax.AssessedIncome)</dd></div>
+                    <div><dt>Basic allowance</dt><dd>@FormatSek(calculation.AnnualTax.BasicAllowance)</dd></div>
+                    <div><dt>Taxable income</dt><dd>@FormatSek(calculation.AnnualTax.TaxableIncome)</dd></div>
+                    <div><dt>State income tax</dt><dd>@FormatSek(calculation.AnnualTax.StateIncomeTax)</dd></div>
+                    <div><dt>Municipal income tax</dt><dd>@FormatSek(calculation.AnnualTax.MunicipalIncomeTax)</dd></div>
+                    <div><dt>Burial and religious fee</dt><dd>@FormatSek(calculation.AnnualTax.BurialAndReligiousFee)</dd></div>
+                    <div><dt>Pension fee</dt><dd>@FormatSek(calculation.AnnualTax.PensionFee)</dd></div>
+                    <div><dt>Pension fee credit</dt><dd>@FormatCredit(calculation.AnnualTax.PensionFeeCredit)</dd></div>
+                    <div><dt>Work income credit</dt><dd>@FormatCredit(calculation.AnnualTax.WorkIncomeCredit)</dd></div>
+                    <div><dt>Sickness compensation credit</dt><dd>@FormatCredit(calculation.AnnualTax.SicknessCompensationCredit)</dd></div>
+                    <div><dt>Earned income credit</dt><dd>@FormatCredit(calculation.AnnualTax.EarnedIncomeCredit)</dd></div>
+                    <div><dt>Public service fee</dt><dd>@FormatSek(calculation.AnnualTax.PublicServiceFee)</dd></div>
+                    <div class="total-row"><dt>Total annual tax</dt><dd>@FormatSek(calculation.AnnualTax.Total)</dd></div>
+                </dl>
+            </div>
+        </section>
+    }
+
+    <footer>
+        Preliminary tax based on Skatteverket tables and SKV 433, edition 36.
+    </footer>
+</main>
+
+@code {
+    private static readonly NumberFormatInfo SekFormat = new()
+    {
+        NumberDecimalDigits = 0,
+        NumberGroupSeparator = " ",
+    };
+
+    private IncomePeriod period = IncomePeriod.Monthly;
+    private byte table = 32;
+    private TaxColumn column = TaxColumn.Column1;
+    private uint income = 55_033;
+
+    private CalculationData? Calculation
+    {
+        get
+        {
+            var monthlyIncome = period == IncomePeriod.Monthly ? income : income / 12;
+            var annualIncome = period == IncomePeriod.Monthly
+                ? checked((uint)Math.Min((ulong)income * 12, uint.MaxValue))
+                : income;
+            var deduction = TaxCalculator.GetMonthlyDeduction(table, column, monthlyIncome);
+            var annualTax = TaxCalculator.CalculateAnnualTax(table, column, annualIncome);
+            var marginalRate = TaxCalculator.CalculateMarginalRate(table, column, monthlyIncome);
+
+            return deduction is { } foundDeduction
+                && annualTax is not null
+                && marginalRate is { } foundMarginalRate
+                ? new CalculationData(
+                    monthlyIncome,
+                    annualIncome,
+                    foundDeduction,
+                    annualTax,
+                    foundMarginalRate)
+                : null;
+        }
+    }
+
+    private static string FormatSek(uint value) => $"{value.ToString("N", SekFormat)} SEK";
+
+    private static string FormatCredit(uint value) => value == 0
+        ? FormatSek(0)
+        : $"-{FormatSek(value)}";
+
+    private static string FormatDeduction(TaxDeduction deduction) =>
+        deduction.Kind == TaxDeductionKind.Amount
+            ? $"{FormatSek(deduction.Value)} / month"
+            : $"{deduction.Value}% of payment";
+
+    private static string FormatDifference(CalculationData calculation)
+    {
+        if (calculation.TableDeduction.Kind == TaxDeductionKind.Percent)
+        {
+            var difference = calculation.EffectiveRate - calculation.TableDeduction.Value;
+            return $"{difference:+0.00;-0.00;0.00} pp";
+        }
+
+        var amountDifference = (long)calculation.FormulaMonthlyTax
+            - calculation.TableDeduction.Value;
+        return amountDifference switch
+        {
+            > 0 => $"+{FormatSek((uint)amountDifference)}",
+            < 0 => $"-{FormatSek((uint)-amountDifference)}",
+            _ => FormatSek(0),
+        };
+    }
+
+    private enum IncomePeriod
+    {
+        Monthly,
+        Annual,
+    }
+
+    private sealed record CalculationData(
+        uint MonthlyIncome,
+        uint AnnualIncome,
+        TaxDeduction TableDeduction,
+        AnnualTax AnnualTax,
+        double MarginalRate)
+    {
+        public uint FormulaMonthlyTax => AnnualTax.Total / 12;
+
+        public uint FormulaMonthlyNet => MonthlyIncome > FormulaMonthlyTax
+            ? MonthlyIncome - FormulaMonthlyTax
+            : 0;
+
+        public double EffectiveRate => AnnualIncome == 0
+            ? 0
+            : AnnualTax.Total * 100.0 / AnnualIncome;
+    }
+}
