@@ -108,6 +108,10 @@
                 <article class="summary-item official-summary">
                     <span>Official table</span>
                     <strong>@FormatDeduction(calculation.TableDeduction)</strong>
+                </article>
+                <article class="summary-item formula-summary">
+                    <span>Annual formula</span>
+                    <strong>@FormatSek(calculation.AnnualTax.Total)</strong>
                     <div class="marginal-rate selector-help-control"
                          tabindex="0"
                          aria-describedby="marginal-rate-help">
@@ -116,19 +120,17 @@
                         <aside id="marginal-rate-help"
                                class="selector-help-panel marginal-help-panel"
                                role="tooltip">
-                            <h4>How Skatteverket calculates marginal tax</h4>
+                            <h4>How marginal tax is calculated</h4>
                             <p>
-                                Skatteverket recommends comparing table withholding for your current monthly
-                                income with the withholding at 1,000 SEK more. This estimates the tax on a
-                                potential next 1,000 SEK.
+                                Marginal tax estimates the tax on a potential next 1,000 SEK of monthly income.
                             </p>
-                            <p>The additional withholding is divided by 1,000 and shown as a percentage.</p>
+                            <p>
+                                This app annualizes your current monthly income and an income 1,000 SEK higher,
+                                then calculates the annual tax for both using the formula.
+                            </p>
+                            <p>The additional annual tax is divided by 12,000 and shown as a percentage.</p>
                         </aside>
                     </div>
-                </article>
-                <article class="summary-item formula-summary">
-                    <span>Annual formula</span>
-                    <strong>@FormatSek(calculation.AnnualTax.Total)</strong>
                 </article>
                 <article class="summary-item net-summary">
                     <span>Monthly net</span>

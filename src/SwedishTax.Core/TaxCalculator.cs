@@ -144,34 +144,41 @@ public static class TaxCalculator
             total);
     }
 
+    /// <summary>
+    /// Calculates marginal tax using the annual tax formula.
+    /// </summary>
+    /// <remarks>
+    /// The current monthly income and an income 1,000 SEK higher are annualized.
+    /// Their annual-tax difference is divided by the 12,000 SEK annual interval.
+    /// </remarks>
     public static double? CalculateMarginalRate(
         byte table,
         TaxColumn column,
         uint monthlyIncome)
     {
-        var upperIncome = monthlyIncome <= uint.MaxValue - MarginalIncomeInterval
-            ? monthlyIncome + MarginalIncomeInterval
-            : uint.MaxValue;
-        var lowerIncome = upperIncome == monthlyIncome
-            ? monthlyIncome - MarginalIncomeInterval
-            : monthlyIncome;
-        var lowerDeduction = GetMonthlyDeduction(table, column, lowerIncome);
-        var upperDeduction = GetMonthlyDeduction(table, column, upperIncome);
-        if (lowerDeduction is null || upperDeduction is null)
+        if (monthlyIncome > uint.MaxValue - MarginalIncomeInterval)
         {
             return null;
         }
 
-        var interval = upperIncome - lowerIncome;
-        var taxDifference = (long)MonthlyWithholding(upperIncome, upperDeduction.Value)
-            - MonthlyWithholding(lowerIncome, lowerDeduction.Value);
-        return taxDifference * 100.0 / interval;
-    }
+        var upperIncome = monthlyIncome + MarginalIncomeInterval;
+        var lowerAnnualIncome = (ulong)monthlyIncome * 12;
+        var upperAnnualIncome = (ulong)upperIncome * 12;
+        if (upperAnnualIncome > uint.MaxValue)
+        {
+            return null;
+        }
 
-    private static uint MonthlyWithholding(uint income, TaxDeduction deduction) =>
-        deduction.Kind == TaxDeductionKind.Amount
-            ? deduction.Value
-            : checked((uint)((ulong)income * deduction.Value / 100));
+        var lowerTax = CalculateAnnualTax(table, column, (uint)lowerAnnualIncome);
+        var upperTax = CalculateAnnualTax(table, column, (uint)upperAnnualIncome);
+        if (lowerTax is null || upperTax is null)
+        {
+            return null;
+        }
+
+        var taxDifference = (long)upperTax.Total - lowerTax.Total;
+        return taxDifference * 100.0 / (upperAnnualIncome - lowerAnnualIncome);
+    }
 
     private static int ColumnIndex(TaxColumn column) => column switch
     {

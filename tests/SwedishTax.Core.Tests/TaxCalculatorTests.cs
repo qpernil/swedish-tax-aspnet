@@ -5,6 +5,12 @@ namespace SwedishTax.Core.Tests;
 public sealed class TaxCalculatorTests
 {
     private static readonly TaxColumn[] Columns = Enum.GetValues<TaxColumn>();
+    private static readonly uint[] AnnualFormulaGrossBreakpoints =
+    [
+        25_042, 53_872, 58_608, 65_712, 103_600, 116_328, 161_024, 184_112, 191_808,
+        296_000, 310_208, 466_496, 478_336, 660_672, 673_038, 760_128,
+    ];
+    private static readonly uint[] TaxableIncomeBreakpoints = [40_000, 118_400, 240_000, 643_200];
 
     [Fact]
     public void TablesCoverEveryPositiveIncomeWithoutGaps()
@@ -168,14 +174,76 @@ public sealed class TaxCalculatorTests
     }
 
     [Fact]
-    public void MarginalRateUsesOfficialTableWithholding()
+    public void MarginalRateUsesAnnualFormulaAtAllIncomes()
     {
+        var expected = (38_894 - 35_889) * 100.0 / 12_000;
         Assert.Equal(
-            25.1,
+            expected,
             TaxCalculator.CalculateMarginalRate(34, TaxColumn.Column1, 18_000));
-        Assert.Equal(
-            48.0,
-            TaxCalculator.CalculateMarginalRate(29, TaxColumn.Column1, uint.MaxValue));
+        Assert.Null(TaxCalculator.CalculateMarginalRate(29, TaxColumn.Column1, uint.MaxValue));
         Assert.Null(TaxCalculator.CalculateMarginalRate(28, TaxColumn.Column1, 18_000));
+    }
+
+    [Fact]
+    public void MarginalRateCoversEveryAnnualFormulaRangeTransition()
+    {
+        for (var table = TaxCalculator.MinTaxTable; table <= TaxCalculator.MaxTaxTable; table++)
+        {
+            foreach (var column in Columns)
+            {
+                foreach (var breakpoint in AnnualFormulaGrossBreakpoints)
+                {
+                    AssertFormulaTransition(table, column, breakpoint);
+                }
+
+                foreach (var taxableBreakpoint in TaxableIncomeBreakpoints)
+                {
+                    AssertFormulaTransition(
+                        table,
+                        column,
+                        FindGrossIncomeForTaxableBreakpoint(table, column, taxableBreakpoint));
+                }
+            }
+        }
+    }
+
+    private static uint FindGrossIncomeForTaxableBreakpoint(
+        byte table,
+        TaxColumn column,
+        uint taxableBreakpoint)
+    {
+        for (uint grossIncome = 0; grossIncome <= 1_000_000; grossIncome += 100)
+        {
+            var tax = TaxCalculator.CalculateAnnualTax(table, column, grossIncome);
+            if (tax is not null && tax.TaxableIncome >= taxableBreakpoint)
+            {
+                return grossIncome;
+            }
+        }
+
+        throw new InvalidOperationException($"Taxable breakpoint {taxableBreakpoint} was not reached.");
+    }
+
+    private static void AssertFormulaTransition(byte table, TaxColumn column, uint breakpoint)
+    {
+        var transition = (breakpoint + 99) / 100 * 100;
+        var before = TaxCalculator.CalculateAnnualTax(table, column, transition - 100)!;
+        var at = TaxCalculator.CalculateAnnualTax(table, column, transition)!;
+        var after = TaxCalculator.CalculateAnnualTax(table, column, transition + 100)!;
+        Assert.True(before.Total <= before.AssessedIncome);
+        Assert.True(at.Total <= at.AssessedIncome);
+        Assert.True(after.Total <= after.AssessedIncome);
+
+        var monthlyIncome = (transition > 6_000 ? transition - 6_000 : 0) / 12;
+        var lowerAnnualIncome = monthlyIncome * 12;
+        var upperAnnualIncome = (monthlyIncome + 1_000) * 12;
+        Assert.True(lowerAnnualIncome <= transition && transition <= upperAnnualIncome);
+        var lowerTax = TaxCalculator.CalculateAnnualTax(table, column, lowerAnnualIncome)!;
+        var upperTax = TaxCalculator.CalculateAnnualTax(table, column, upperAnnualIncome)!;
+        var expected = ((long)upperTax.Total - lowerTax.Total) * 100.0
+            / (upperAnnualIncome - lowerAnnualIncome);
+        var actual = TaxCalculator.CalculateMarginalRate(table, column, monthlyIncome);
+        Assert.Equal(expected, actual);
+        Assert.InRange(actual!.Value, 0.0, 100.0);
     }
 }
