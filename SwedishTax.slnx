@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SwedishTax.Core/SwedishTax.Core.csproj" />
+  </Folder>
+  <Folder Name="/src/SwedishTax.Web/">
+    <Project Path="src/SwedishTax.Web/SwedishTax.Web.Client/SwedishTax.Web.Client.csproj" />
+    <Project Path="src/SwedishTax.Web/SwedishTax.Web/SwedishTax.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SwedishTax.Core.Tests/SwedishTax.Core.Tests.csproj" />
+  </Folder>
+</Solution>
