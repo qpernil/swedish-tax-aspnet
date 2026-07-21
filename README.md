@@ -1,8 +1,16 @@
-# Swedish Tax ASP.NET
+# Swedish tax calculations for 2026
 
-An ASP.NET Core Blazor Web App for the 2026 Swedish preliminary income-tax
-tables. It supports tax tables 29 through 42, all six table columns, monthly
-and annual income, and the complete annual calculation from SKV 433 edition 36.
+This ASP.NET Core Blazor Web App implements Skatteverket monthly tax tables 29
+through 42 and the annual preliminary-tax formulas from SKV 433, edition 36,
+for income year 2026.
+
+The calculations use the same assumptions as the published tables and are not
+an individualized final tax assessment.
+
+## Web application
+
+The application supports all six table columns, monthly and annual income, and
+the complete annual calculation from SKV 433 edition 36.
 
 The calculator runs as interactive WebAssembly in the browser. Entered income
 therefore stays in the browser and is not sent to the ASP.NET Core server.
@@ -36,6 +44,6 @@ The application prints its local URL when it starts.
 - [Official monthly tables](https://www.skatteverket.se/download/18.1522bf3f19aea8075ba5af/1765287119989/allmanna-tabeller-manad.txt)
 - [Worked examples](https://www.skatteverket.se/download/18.1522bf3f19aea8075ba55f/1765284831853/bilaga-3-exempel-till-skv-433-2026.pdf)
 
-The result is a preliminary calculation based on the published assumptions,
-not an individualized final tax assessment.
+## License
 
+This project is distributed under the [MIT License](LICENSE).
