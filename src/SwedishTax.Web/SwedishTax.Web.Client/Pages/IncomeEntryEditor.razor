@@ -1,0 +1,305 @@
+@using System.Globalization
+
+<article class="income-entry-card">
+    <div class="entry-heading">
+        <label>
+            <span>Description</span>
+            <input type="text" maxlength="80" @bind="Entry.Description" />
+        </label>
+        <button type="button" class="danger-button" @onclick="Remove">Remove</button>
+    </div>
+
+    <div class="entry-grid">
+        <label class="wide-field">
+            <span>Income type</span>
+            <select value="@Entry.Kind" @onchange="KindChanged">
+                @foreach (var kind in Enum.GetValues<IncomeKind>())
+                {
+                    <option value="@kind">@kind.Label()</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@AmountLabel</span>
+            <div class="unit-input">
+                <input type="number" min="0" max="100000000" step="1"
+                       @bind="Entry.Amount" @bind:event="oninput" />
+                <small>SEK</small>
+            </div>
+        </label>
+        <label>
+            <span>Payer role</span>
+            <select @bind="Entry.PayerRole">
+                <option value="@PayerRole.Main">Main payer</option>
+                <option value="@PayerRole.Secondary">Secondary payer (@(global::SwedishTax.Core.Withholding.SecondaryPayerRate)%)</option>
+            </select>
+        </label>
+    </div>
+
+    @if (Entry.Kind.IsMonthly())
+    {
+        <div class="entry-grid period-grid">
+            <label><span>Start month</span><input type="number" min="1" max="12" @bind="StartMonth" /></label>
+            <label><span>Start day</span><input type="number" min="1" max="31" @bind="StartDay" /></label>
+            <label><span>End month</span><input type="number" min="1" max="12" @bind="EndMonth" /></label>
+            <label><span>End day</span><input type="number" min="1" max="31" @bind="EndDay" /></label>
+        </div>
+        @if (!Entry.IsValid)
+        {
+            <p class="field-error">The end date must not be before the start date.</p>
+        }
+    }
+
+    @if (!Entry.Kind.IsDividend())
+    {
+        <div class="option-grid">
+            <label class="check-field">
+                <input type="checkbox" @bind="HasCustomWithholding" />
+                <span>Use a custom withholding rate</span>
+            </label>
+            @if (HasCustomWithholding)
+            {
+                <label class="inline-number">
+                    <span>Custom rate</span>
+                    <input type="number" min="0" max="100" @bind="CustomWithholdingPercent" />
+                    <small>%</small>
+                </label>
+            }
+
+            @if (HasAdjustment)
+            {
+                <label class="check-field">
+                    <input type="checkbox" @bind="Entry.AdjustmentApplies" />
+                    <span>Apply the jämkning rate to this income</span>
+                </label>
+            }
+            @if (Entry.Kind is IncomeKind.AnnualSalary or IncomeKind.MonthlySalary)
+            {
+                <label class="check-field">
+                    <input type="checkbox" @bind="Entry.UseFullYearProjectionAsAdjustmentBasis" />
+                    <span>Use the full-year salary projection as the jämkning basis</span>
+                </label>
+            }
+        </div>
+    }
+
+    @if (Entry.Kind == IncomeKind.MonthlySalary)
+    {
+        <details class="entry-details">
+            <summary>Vacation payout and occupational pension</summary>
+            <label class="check-field">
+                <input type="checkbox" @bind="HasVacationCompensation" />
+                <span>Add vacation compensation</span>
+            </label>
+            @if (HasVacationCompensation)
+            {
+                <div class="entry-grid compact-grid">
+                    <label><span>Annual entitlement</span><input type="number" min="0" max="100" @bind="VacationEntitlementDays" /></label>
+                    <label><span>Payout days</span><input type="number" min="0" max="366" @bind="VacationPayoutDays" /></label>
+                    <label class="check-field"><input type="checkbox" @bind="VacationInPensionBasis" /><span>Include payout in pension salary basis</span></label>
+                </div>
+                <p class="microcopy">Estimated vacation payout: @FormatSek(Entry.VacationCompensationAmount)</p>
+            }
+
+            <label class="check-field">
+                <input type="checkbox" @bind="HasRegularPension" />
+                <span>Include an employer occupational-pension contribution</span>
+            </label>
+            @if (HasRegularPension)
+            {
+                <label class="inline-number">
+                    <span>Actual monthly premium (blank uses benchmark)</span>
+                    <input type="number" min="0" max="100000000" value="@PensionOverrideText" @onchange="PensionOverrideChanged" />
+                    <small>SEK</small>
+                </label>
+                <p class="microcopy">Annual employer contribution: @FormatSek(Entry.RegularPensionPremiumAmount)</p>
+            }
+        </details>
+    }
+
+    @if (Entry.Kind == IncomeKind.AnnualSalary)
+    {
+        <details class="entry-details">
+            <summary>Occupational pension</summary>
+            <label class="check-field">
+                <input type="checkbox" @bind="HasRegularPension" />
+                <span>Include an employer occupational-pension contribution</span>
+            </label>
+            @if (HasRegularPension)
+            {
+                <label class="inline-number">
+                    <span>Actual monthly premium (blank uses benchmark)</span>
+                    <input type="number" min="0" max="100000000" value="@PensionOverrideText" @onchange="PensionOverrideChanged" />
+                    <small>SEK</small>
+                </label>
+                <p class="microcopy">Annual employer contribution: @FormatSek(Entry.RegularPensionPremiumAmount)</p>
+            }
+        </details>
+    }
+
+    @if (Entry.Kind == IncomeKind.OneTimeSalary)
+    {
+        <details class="entry-details">
+            <summary>Salary exchange</summary>
+            <label class="check-field">
+                <input type="checkbox" @bind="HasSalaryExchange" />
+                <span>Exchange part of this payment for pension</span>
+            </label>
+            @if (HasSalaryExchange)
+            {
+                <div class="entry-grid compact-grid">
+                    <label><span>Sacrificed salary</span><input type="number" min="0" max="@Entry.Amount" @bind="SalaryExchangeSacrifice" /></label>
+                    <label><span>Employer uplift</span><input type="number" min="0" max="10000" step="1" @bind="SalaryExchangeUplift" /></label>
+                    <label class="check-field"><input type="checkbox" @bind="SalaryExchangeAddsUplift" /><span>Employer adds uplift</span></label>
+                    <label class="check-field"><input type="checkbox" @bind="Entry.IncludedInPensionSalaryBasis" /><span>Payment is in pension salary basis</span></label>
+                </div>
+                @if (Allowance is { } allowance)
+                {
+                    <p class="microcopy">
+                        Pension contribution @FormatSek(Entry.SalaryExchangePensionContribution).
+                        Maximum sacrifice within the @(SalaryExchange.EmployerPensionAllowanceRateBasisPoints / 100.0)% allowance: @FormatSek(allowance.MaximumSacrifice).
+                    </p>
+                }
+            }
+        </details>
+    }
+
+    <footer class="entry-result">
+        <span>@EligibilityText</span>
+        <span>Annual cash <strong>@FormatSek(Entry.TotalAnnualAmount)</strong></span>
+        @if (Withholding is { } withholding)
+        {
+            <span>Calculated withholding <strong>@FormatSek(withholding.Withheld)</strong> · @RuleText(withholding.Rule)</span>
+        }
+    </footer>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public IncomeEntry Entry { get; set; } = null!;
+    [Parameter] public bool HasAdjustment { get; set; }
+    [Parameter] public EntryWithholding? Withholding { get; set; }
+    [Parameter] public SalaryExchangeAllowance? Allowance { get; set; }
+    [Parameter] public EventCallback<ulong> OnRemove { get; set; }
+
+    private string AmountLabel => Entry.Kind switch
+    {
+        IncomeKind.MonthlySalary or IncomeKind.MonthlyOccupationalPension => "Monthly amount",
+        IncomeKind.OneTimeSalary => "One-time amount",
+        _ => "Annual amount",
+    };
+
+    private string EligibilityText => Entry.Kind switch
+    {
+        IncomeKind.AnnualSalary or IncomeKind.MonthlySalary => "PGI eligible · SGI estimate eligible",
+        IncomeKind.OneTimeSalary => "PGI eligible · does not establish ongoing SGI",
+        _ => "PGI — · SGI —",
+    };
+
+    private byte StartMonth { get => Entry.Start.Month; set => Entry.Start = new(value, Entry.Start.Day); }
+    private byte StartDay { get => Entry.Start.Day; set => Entry.Start = new(Entry.Start.Month, value); }
+    private byte EndMonth { get => Entry.End.Month; set => Entry.End = new(value, Entry.End.Day); }
+    private byte EndDay { get => Entry.End.Day; set => Entry.End = new(Entry.End.Month, value); }
+
+    private bool HasCustomWithholding
+    {
+        get => Entry.CustomWithholdingPercent.HasValue;
+        set => Entry.CustomWithholdingPercent = value
+            ? global::SwedishTax.Core.Withholding.SecondaryPayerRate
+            : null;
+    }
+    private uint CustomWithholdingPercent
+    {
+        get => Entry.CustomWithholdingPercent ?? 0;
+        set => Entry.CustomWithholdingPercent = Math.Min(value, 100);
+    }
+
+    private bool HasVacationCompensation
+    {
+        get => Entry.VacationCompensation.HasValue;
+        set => Entry.VacationCompensation = value
+            ? VacationCompensation.Suggested(25, Entry.Start, Entry.End)
+            : null;
+    }
+    private uint VacationEntitlementDays
+    {
+        get => Entry.VacationCompensation?.AnnualEntitlementDays ?? 0;
+        set { if (Entry.VacationCompensation is { } vacation) Entry.VacationCompensation = vacation with { AnnualEntitlementDays = value }; }
+    }
+    private uint VacationPayoutDays
+    {
+        get => Entry.VacationCompensation?.PayoutDays ?? 0;
+        set { if (Entry.VacationCompensation is { } vacation) Entry.VacationCompensation = vacation with { PayoutDays = value }; }
+    }
+    private bool VacationInPensionBasis
+    {
+        get => Entry.VacationCompensation?.IncludedInPensionSalaryBasis ?? false;
+        set { if (Entry.VacationCompensation is { } vacation) Entry.VacationCompensation = vacation with { IncludedInPensionSalaryBasis = value }; }
+    }
+
+    private bool HasRegularPension
+    {
+        get => Entry.RegularPensionPremium.HasValue;
+        set => Entry.RegularPensionPremium = value ? new RegularPensionPremium() : null;
+    }
+    private string PensionOverrideText => Entry.RegularPensionPremium?.MonthlyOverride?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+
+    private bool HasSalaryExchange
+    {
+        get => Entry.SalaryExchange.HasValue;
+        set => Entry.SalaryExchange = value ? new SalaryExchange() : null;
+    }
+    private uint SalaryExchangeSacrifice
+    {
+        get => Entry.SalaryExchange?.SacrificedSalary ?? 0;
+        set { if (Entry.SalaryExchange is { } exchange) Entry.SalaryExchange = exchange with { SacrificedSalary = Math.Min(value, Entry.Amount) }; }
+    }
+    private bool SalaryExchangeAddsUplift
+    {
+        get => Entry.SalaryExchange?.EmployerAddsUplift ?? false;
+        set { if (Entry.SalaryExchange is { } exchange) Entry.SalaryExchange = exchange with { EmployerAddsUplift = value }; }
+    }
+    private uint SalaryExchangeUplift
+    {
+        get => Entry.SalaryExchange?.UpliftBasisPoints ?? 0;
+        set { if (Entry.SalaryExchange is { } exchange) Entry.SalaryExchange = exchange with { UpliftBasisPoints = value }; }
+    }
+
+    private Task Remove() => OnRemove.InvokeAsync(Entry.Id);
+
+    private void KindChanged(ChangeEventArgs args)
+    {
+        if (!Enum.TryParse<IncomeKind>(args.Value?.ToString(), out var kind)) return;
+        Entry.Kind = kind;
+        Entry.RegularPensionPremium = kind is IncomeKind.AnnualSalary or IncomeKind.MonthlySalary
+            ? Entry.RegularPensionPremium ?? new RegularPensionPremium()
+            : null;
+        if (kind != IncomeKind.MonthlySalary) Entry.VacationCompensation = null;
+        if (kind != IncomeKind.OneTimeSalary) Entry.SalaryExchange = null;
+        Entry.IncludedInPensionSalaryBasis = kind is IncomeKind.AnnualSalary or IncomeKind.MonthlySalary;
+    }
+
+    private void PensionOverrideChanged(ChangeEventArgs args)
+    {
+        if (Entry.RegularPensionPremium is not { } premium) return;
+        var text = args.Value?.ToString();
+        Entry.RegularPensionPremium = premium with
+        {
+            MonthlyOverride = uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value)
+                ? value
+                : null,
+        };
+    }
+
+    private static string RuleText(AppliedWithholding rule) => rule.Kind switch
+    {
+        AppliedWithholdingKind.Table => $"table column {(byte)rule.Column!}",
+        AppliedWithholdingKind.TableAndOneTime => $"table column {(byte)rule.Column!} plus one-time table at {rule.Percent}%",
+        AppliedWithholdingKind.OneTimeTable => $"one-time-payment table at {rule.Percent}%",
+        AppliedWithholdingKind.Secondary30 => "secondary payer at 30%",
+        AppliedWithholdingKind.AdjustmentPercent => $"jämkning at {rule.Percent}%",
+        AppliedWithholdingKind.CustomPercent => $"custom rate at {rule.Percent}%",
+        _ => "no withholding",
+    };
+
+    private static string FormatSek(uint value) => $"{value:N0} SEK";
+}

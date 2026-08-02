@@ -62,14 +62,65 @@ public static class TaxCalculator
         TaxColumn column,
         uint grossYearlyIncome)
     {
-        if (table is < MinTaxTable or > MaxTaxTable || ColumnIndex(column) < 0)
+        var bases = column switch
+        {
+            TaxColumn.Column1 => new AnnualTaxBases(
+                grossYearlyIncome, grossYearlyIncome, grossYearlyIncome, false,
+                WorkCreditKind.Under66, false),
+            TaxColumn.Column2 => new AnnualTaxBases(
+                grossYearlyIncome, 0, 0, true, WorkCreditKind.None, false),
+            TaxColumn.Column3 => new AnnualTaxBases(
+                grossYearlyIncome, grossYearlyIncome, grossYearlyIncome, true,
+                WorkCreditKind.Over66, false),
+            TaxColumn.Column4 => new AnnualTaxBases(
+                grossYearlyIncome, 0, 0, false, WorkCreditKind.None, true),
+            TaxColumn.Column5 => new AnnualTaxBases(
+                grossYearlyIncome, grossYearlyIncome, 0, false, WorkCreditKind.None, false),
+            TaxColumn.Column6 => new AnnualTaxBases(
+                grossYearlyIncome, 0, 0, false, WorkCreditKind.None, false),
+            _ => default,
+        };
+        return ColumnIndex(column) < 0 ? null : CalculateAnnualTax(table, bases);
+    }
+
+    /// <summary>Calculates annual tax for a mixture of salary and pension income.</summary>
+    public static AnnualTax? CalculateAnnualTax(
+        byte table,
+        TaxAgeGroup ageGroup,
+        AnnualIncomeProfile profile)
+    {
+        var workCredit = ageGroup switch
+        {
+            TaxAgeGroup.Under66AtYearStart => WorkCreditKind.Under66,
+            TaxAgeGroup.AtLeast66AtYearStart => WorkCreditKind.Over66,
+            _ => WorkCreditKind.Invalid,
+        };
+        if (workCredit == WorkCreditKind.Invalid)
         {
             return null;
         }
 
-        var assessedIncome = RoundDownHundred(grossYearlyIncome);
-        var enhancedAllowance = column is TaxColumn.Column2 or TaxColumn.Column3;
-        var basicAllowance = BasicAllowance(assessedIncome, enhancedAllowance);
+        return CalculateAnnualTax(table, new AnnualTaxBases(
+            profile.Total,
+            profile.WorkIncome,
+            profile.WorkIncome,
+            ageGroup == TaxAgeGroup.AtLeast66AtYearStart,
+            workCredit,
+            false));
+    }
+
+    private static AnnualTax? CalculateAnnualTax(byte table, AnnualTaxBases bases)
+    {
+        if (table is < MinTaxTable or > MaxTaxTable)
+        {
+            return null;
+        }
+
+        var assessedIncome = RoundDownHundred(bases.GrossIncome);
+        var assessedWorkIncome = RoundDownHundred(Math.Min(bases.WorkIncome, assessedIncome));
+        var assessedPensionFeeIncome = RoundDownHundred(
+            Math.Min(bases.PensionFeeIncome, assessedIncome));
+        var basicAllowance = BasicAllowance(assessedIncome, bases.EnhancedAllowance);
         var taxableIncome = SaturatingSubtract(assessedIncome, basicAllowance);
 
         var stateIncomeTax = taxableIncome >= StateTaxThreshold + 200
@@ -79,8 +130,7 @@ public static class TaxCalculator
         var municipalIncomeTax = PercentageFloor(taxableIncome, municipalRate, 10_000);
         var burialAndReligiousFee =
             PercentageFloor(taxableIncome, BurialAndReligiousRate, 10_000);
-        var hasPensionFee = column is TaxColumn.Column1 or TaxColumn.Column3 or TaxColumn.Column5;
-        var pensionFee = hasPensionFee ? PensionFee(assessedIncome) : 0;
+        var pensionFee = PensionFee(assessedPensionFeeIncome);
         var publicServiceFee = Math.Min(taxableIncome / 100, PublicServiceFeeMaximum);
 
         var pensionFeeCredit = Math.Min(
@@ -91,19 +141,19 @@ public static class TaxCalculator
         var municipalTaxLeft =
             SaturatingSubtract(municipalIncomeTax, pensionCreditAgainstMunicipal);
 
-        uint calculatedWorkCredit = column switch
+        uint calculatedWorkCredit = bases.WorkCredit switch
         {
-            TaxColumn.Column1 => WorkIncomeCreditUnder66(
-                assessedIncome,
+            WorkCreditKind.Under66 => WorkIncomeCreditUnder66(
+                assessedWorkIncome,
                 basicAllowance,
                 municipalRate),
-            TaxColumn.Column3 => WorkIncomeCreditOver66(assessedIncome),
+            WorkCreditKind.Over66 => WorkIncomeCreditOver66(assessedWorkIncome),
             _ => 0,
         };
         var workIncomeCredit = Math.Min(calculatedWorkCredit, municipalTaxLeft);
         municipalTaxLeft -= workIncomeCredit;
 
-        uint calculatedSicknessCredit = column == TaxColumn.Column4
+        uint calculatedSicknessCredit = bases.HasSicknessCredit
             ? SicknessCompensationCredit(assessedIncome, basicAllowance, municipalRate)
             : 0;
         var sicknessCompensationCredit = Math.Min(calculatedSicknessCredit, municipalTaxLeft);
@@ -143,6 +193,8 @@ public static class TaxCalculator
             publicServiceFee,
             total);
     }
+
+    internal static uint CalculatePensionFee(uint income) => PensionFee(income);
 
     /// <summary>
     /// Calculates marginal tax using the annual tax formula.
@@ -306,4 +358,20 @@ public static class TaxCalculator
 
     private static uint SaturatingSubtract(uint value, uint subtract) =>
         value > subtract ? value - subtract : 0;
+
+    private readonly record struct AnnualTaxBases(
+        uint GrossIncome,
+        uint PensionFeeIncome,
+        uint WorkIncome,
+        bool EnhancedAllowance,
+        WorkCreditKind WorkCredit,
+        bool HasSicknessCredit);
+
+    private enum WorkCreditKind
+    {
+        None,
+        Under66,
+        Over66,
+        Invalid,
+    }
 }

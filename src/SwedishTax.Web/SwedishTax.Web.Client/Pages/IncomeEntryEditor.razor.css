@@ -1,0 +1,22 @@
+.income-entry-card { padding: 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.entry-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: end; }
+.entry-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; margin-top: 14px; }
+.period-grid, .compact-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+label > span, .entry-details summary { display: block; margin-bottom: 5px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+input, select { width: 100%; min-width: 0; height: 38px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 4px; color: var(--text-primary); background: var(--surface); }
+.unit-input, .inline-number { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.unit-input small, .inline-number small { color: var(--text-secondary); }
+.option-grid { display: flex; flex-wrap: wrap; gap: 14px 24px; margin-top: 14px; }
+.check-field { display: flex; align-items: center; gap: 8px; }
+.check-field input { width: 16px; height: 16px; margin: 0; }
+.check-field span { margin: 0; }
+.entry-details { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-muted); }
+.entry-details summary { cursor: pointer; color: var(--text-primary); }
+.entry-details > * + * { margin-top: 12px; }
+.danger-button { min-height: 38px; padding: 0 12px; border: 1px solid #c84d4d; border-radius: 4px; color: #a12626; background: transparent; cursor: pointer; }
+.microcopy, .field-error { margin: 8px 0 0; color: var(--text-secondary); font-size: 12px; }
+.field-error { color: #a12626; }
+.entry-result { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 18px; margin-top: 15px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 12px; }
+.entry-result strong { color: var(--text-primary); }
+@media (max-width: 760px) { .entry-grid, .period-grid, .compact-grid { grid-template-columns: 1fr 1fr; } .wide-field { grid-column: 1 / -1; } }
+@media (max-width: 480px) { .entry-grid, .period-grid, .compact-grid { grid-template-columns: 1fr; } }

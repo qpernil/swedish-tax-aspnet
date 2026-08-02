@@ -9,19 +9,33 @@ an individualized final tax assessment.
 
 ## Web application
 
-The application supports all six table columns, monthly and annual income, and
-the complete annual calculation from SKV 433 edition 36.
+The application supports annual plans made from multiple income rows:
+
+- annual or date-prorated monthly salary,
+- one-time salary and termination payments,
+- annual or date-prorated occupational pension,
+- own-company dividends within the entered gränsbelopp,
+- main-payer, secondary-payer, jämkning, and custom withholding,
+- vacation compensation, occupational-pension estimates, and salary exchange,
+- mixed salary/pension annual tax, calculated withholding, and reconciliation,
+- 2026 PGI and estimated SGI ceiling progress.
+
+It also retains all six low-level tax-table columns and the complete annual
+calculation from SKV 433 edition 36.
 
 The calculator runs as interactive WebAssembly in the browser. Entered income
 therefore stays in the browser and is not sent to the ASP.NET Core server.
 
 ## Projects
 
-- `src/SwedishTax.Core` contains the table parser and calculation engine.
+- The SwedishTax.Core project contains all tax, withholding, income-plan,
+  pension, PGI/SGI, and projection logic. TaxProjection.Calculate is the
+  UI-independent entry point for a complete plan.
 - `src/SwedishTax.Web/SwedishTax.Web` hosts the Blazor application.
 - `src/SwedishTax.Web/SwedishTax.Web.Client` contains the interactive client UI.
-- `tests/SwedishTax.Core.Tests` verifies every table boundary and the published
-  formula examples.
+- The SwedishTax.Core.Tests project verifies every table boundary, the
+  published formula examples, and complete planning/projection scenarios
+  without loading the GUI.
 
 The official fixed-width monthly table is embedded in `SwedishTax.Core`, so the
 application does not need a database or an external service at runtime.
