@@ -37,14 +37,14 @@ public static class IncomeBases
     public static IncomeBasisEstimate PublicPensionProgress(
         TaxColumn column,
         uint grossYearlyIncome) => column switch
-    {
-        TaxColumn.Column1 or TaxColumn.Column3 or TaxColumn.Column5 =>
-            PublicPensionProgressForIncome(grossYearlyIncome),
-        TaxColumn.Column2 or TaxColumn.Column6 =>
-            IncomeBasisEstimate.NotBasedOnSelectedIncome,
-        TaxColumn.Column4 => IncomeBasisEstimate.RequiresAdditionalInformation,
-        _ => throw new ArgumentOutOfRangeException(nameof(column)),
-    };
+        {
+            TaxColumn.Column1 or TaxColumn.Column3 or TaxColumn.Column5 =>
+                PublicPensionProgressForIncome(grossYearlyIncome),
+            TaxColumn.Column2 or TaxColumn.Column6 =>
+                IncomeBasisEstimate.NotBasedOnSelectedIncome,
+            TaxColumn.Column4 => IncomeBasisEstimate.RequiresAdditionalInformation,
+            _ => throw new ArgumentOutOfRangeException(nameof(column)),
+        };
 
     public static IncomeBasisEstimate PublicPensionProgressForIncome(uint grossYearlyIncome)
     {
