@@ -53,7 +53,7 @@ public static class IncomeKindExtensions
         IncomeKind.OneTimeSalary => "One-time salary / termination payment",
         IncomeKind.MonthlyOccupationalPension => "Tjänstepension — monthly over a period",
         IncomeKind.AnnualOccupationalPension => "Tjänstepension — annual total",
-        IncomeKind.OwnCompanyDividend => "Dividend from own AB — 20% within gränsbelopp",
+        IncomeKind.OwnCompanyDividend => "Dividend from own AB",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
@@ -61,6 +61,9 @@ public static class IncomeKindExtensions
         kind is IncomeKind.MonthlySalary or IncomeKind.MonthlyOccupationalPension;
 
     public static bool IsDividend(this IncomeKind kind) => kind == IncomeKind.OwnCompanyDividend;
+
+    public static bool IsSalary(this IncomeKind kind) => kind is
+        IncomeKind.AnnualSalary or IncomeKind.MonthlySalary or IncomeKind.OneTimeSalary;
 
     public static bool IsPension(this IncomeKind kind) =>
         kind is IncomeKind.MonthlyOccupationalPension or IncomeKind.AnnualOccupationalPension;
@@ -181,8 +184,14 @@ public readonly record struct VacationCompensation(
     {
         const ulong denominator = 21 * 10_000;
         const ulong numeratorPerDay = 10_000 + 43 * 21;
-        var numerator = (ulong)monthlySalary * PayoutDays * numeratorPerDay;
-        return (uint)Math.Min((numerator + denominator / 2) / denominator, uint.MaxValue);
+        var salaryDays = (ulong)monthlySalary * PayoutDays;
+        var numerator = salaryDays > ulong.MaxValue / numeratorPerDay
+            ? ulong.MaxValue
+            : salaryDays * numeratorPerDay;
+        var roundedNumerator = numerator > ulong.MaxValue - denominator / 2
+            ? ulong.MaxValue
+            : numerator + denominator / 2;
+        return (uint)Math.Min(roundedNumerator / denominator, uint.MaxValue);
     }
 }
 
@@ -206,9 +215,12 @@ public sealed class IncomeEntry
     public Date2026 Start { get; set; } = new(1, 1);
     public Date2026 End { get; set; } = new(12, 31);
     public PayerRole PayerRole { get; set; } = PayerRole.Main;
+    public bool OwnCompanySourced { get; set; }
     public bool AdjustmentApplies { get; set; }
     public bool UseFullYearProjectionAsAdjustmentBasis { get; set; }
-    public uint? CustomWithholdingPercent { get; set; }
+    /// <summary>Voluntary extra tax requested from the payer for each payment.</summary>
+    public uint? AdditionalWithholdingPerPayment { get; set; }
+    public uint? ActualWithholding { get; set; }
     public VacationCompensation? VacationCompensation { get; set; }
     public RegularPensionPremium? RegularPensionPremium { get; set; }
     public SalaryExchange? SalaryExchange { get; set; }
@@ -219,6 +231,20 @@ public sealed class IncomeEntry
             .Select(month => AmountForMonth((byte)month))
             .Aggregate(0U, Arithmetic.SaturatingAdd)
         : Amount;
+
+    public uint WithholdingPaymentCount => Kind switch
+    {
+        IncomeKind.AnnualSalary or IncomeKind.AnnualOccupationalPension => 12,
+        IncomeKind.MonthlySalary or IncomeKind.MonthlyOccupationalPension
+            when Start.Clamped.CompareTo(End.Clamped) <= 0 =>
+            (uint)(End.Clamped.Month - Start.Clamped.Month + 1),
+        IncomeKind.OneTimeSalary => 1,
+        _ => 0,
+    };
+
+    public uint RequestedAdditionalWithholding => Arithmetic.SaturatingMultiply(
+        AdditionalWithholdingPerPayment ?? 0,
+        WithholdingPaymentCount);
 
     public uint AmountForMonth(byte month)
     {
@@ -336,6 +362,61 @@ public sealed class IncomeEntry
         }
     }
 
+    public void SetKind(IncomeKind kind, bool adjustmentAvailable)
+    {
+        if (Kind == kind)
+        {
+            return;
+        }
+
+        var previous = Kind;
+        Kind = kind;
+        var regularSalary = kind is IncomeKind.AnnualSalary or IncomeKind.MonthlySalary;
+        IncludedInPensionSalaryBasis = regularSalary;
+        if (regularSalary && RegularPensionPremium is null)
+        {
+            RegularPensionPremium = new RegularPensionPremium();
+        }
+        if (!regularSalary)
+        {
+            UseFullYearProjectionAsAdjustmentBasis = false;
+        }
+        if (kind != IncomeKind.OneTimeSalary)
+        {
+            SalaryExchange = null;
+        }
+        if (kind != IncomeKind.MonthlySalary)
+        {
+            VacationCompensation = null;
+        }
+        if (kind.IsDividend())
+        {
+            AdjustmentApplies = false;
+            AdditionalWithholdingPerPayment = null;
+        }
+        else if (previous.IsDividend() && PayerRole == PayerRole.Main)
+        {
+            AdjustmentApplies = adjustmentAvailable;
+        }
+        if (!kind.IsSalary())
+        {
+            OwnCompanySourced = false;
+        }
+    }
+
+    public void SetPayerRole(PayerRole payerRole, bool adjustmentAvailable)
+    {
+        if (PayerRole == payerRole)
+        {
+            return;
+        }
+
+        PayerRole = payerRole;
+        AdjustmentApplies = adjustmentAvailable
+            && payerRole == PayerRole.Main
+            && !Kind.IsDividend();
+    }
+
     private uint ProratedMonthlyValue(byte month, uint monthlyValue)
     {
         if (Start.CompareTo(End) > 0 || month is < 1 or > 12)
@@ -390,12 +471,12 @@ public readonly record struct SalaryExchangeAllowance(
 
 public enum AppliedWithholdingKind
 {
+    ActualAmount,
     Table,
     TableAndOneTime,
     OneTimeTable,
     Secondary30,
     AdjustmentPercent,
-    CustomPercent,
     None,
 }
 
@@ -408,9 +489,23 @@ public readonly record struct EntryWithholding(
     ulong EntryId,
     uint Gross,
     uint Withheld,
+    uint RegularWithheld,
+    uint SupplementalWithheld,
+    uint AdditionalWithheld,
     AppliedWithholding Rule);
 
 public sealed record WithholdingSummary(uint Total, IReadOnlyList<EntryWithholding> Entries);
+
+public enum IncomePlanValidationIssueKind
+{
+    InvalidPaymentPeriod,
+    SalaryExchangeExceedsAllowance,
+}
+
+public readonly record struct IncomePlanValidationIssue(
+    IncomePlanValidationIssueKind Kind,
+    ulong EntryId,
+    uint? Maximum = null);
 
 public sealed class IncomePlan
 {
@@ -420,6 +515,7 @@ public sealed class IncomePlan
 
     public List<IncomeEntry> Entries { get; } = [];
     public uint? AdjustmentPercent { get; set; }
+    public DividendAllowanceInputs2027 DividendAllowance { get; } = new();
 
     public static IncomePlan WithAnnualSalary(uint amount)
     {
@@ -445,8 +541,28 @@ public sealed class IncomePlan
     {
         var id = nextId;
         nextId = nextId == ulong.MaxValue ? ulong.MaxValue : nextId + 1;
-        Entries.Add(new IncomeEntry(id, kind));
+        var entry = new IncomeEntry(id, kind)
+        {
+            AdjustmentApplies = AdjustmentPercent.HasValue && !kind.IsDividend(),
+        };
+        Entries.Add(entry);
         return id;
+    }
+
+    public void SetAdjustmentEnabled(bool enabled)
+    {
+        if (enabled == AdjustmentPercent.HasValue)
+        {
+            return;
+        }
+
+        AdjustmentPercent = enabled ? Withholding.SecondaryPayerRate : null;
+        foreach (var entry in Entries)
+        {
+            entry.AdjustmentApplies = enabled
+                && entry.PayerRole == PayerRole.Main
+                && !entry.Kind.IsDividend();
+        }
     }
 
     public void RemoveEntry(ulong id)
@@ -458,7 +574,44 @@ public sealed class IncomePlan
         }
     }
 
-    public bool IsValid => Entries.All(entry => entry.IsValid);
+    public IncomePlanValidationIssue? ValidationIssue
+    {
+        get
+        {
+            var invalidPeriod = Entries.FirstOrDefault(entry => !entry.IsValid);
+            if (invalidPeriod is not null)
+            {
+                return new IncomePlanValidationIssue(
+                    IncomePlanValidationIssueKind.InvalidPaymentPeriod,
+                    invalidPeriod.Id);
+            }
+
+            foreach (var entry in Entries.Where(entry => entry.SalaryExchange.HasValue))
+            {
+                var allowance = GetSalaryExchangeAllowance(entry.Id);
+                if (allowance is { } value
+                    && entry.SalaryExchangeSacrifice > value.MaximumSacrifice)
+                {
+                    return new IncomePlanValidationIssue(
+                        IncomePlanValidationIssueKind.SalaryExchangeExceedsAllowance,
+                        entry.Id,
+                        value.MaximumSacrifice);
+                }
+            }
+
+            return null;
+        }
+    }
+
+    public bool IsValid => ValidationIssue is null;
+
+    public uint OwnCompanySourcedWorkIncome => Entries
+        .Where(entry => entry.Kind.IsSalary() && entry.OwnCompanySourced)
+        .Select(entry => entry.TotalAnnualAmount)
+        .Aggregate(0U, Arithmetic.SaturatingAdd);
+
+    public DividendAllowanceResult CalculateDividendAllowance2027() =>
+        DividendAllowance.Calculate(OwnCompanySourcedWorkIncome);
 
     /// <summary>
     /// Whether the plan represents one uniform full-year main salary for which
@@ -471,7 +624,8 @@ public sealed class IncomePlan
             if (Entries is not [var entry]
                 || entry.PayerRole != PayerRole.Main
                 || entry.AdjustmentApplies
-                || entry.CustomWithholdingPercent.HasValue
+                || entry.AdditionalWithholdingPerPayment.HasValue
+                || entry.ActualWithholding.HasValue
                 || entry.VacationCompensationAmount > 0)
             {
                 return false;
@@ -610,42 +764,81 @@ public sealed class IncomePlan
         foreach (var entry in Entries)
         {
             var gross = entry.TotalAnnualAmount;
-            var (withheld, rule) = EntryWithholding(entry, gross, totals, table, ageGroup);
+            var (withheld, regularWithheld, supplementalWithheld, additionalWithheld, rule) =
+                CalculateEntryWithholding(entry, gross, totals, table, ageGroup);
             total = Arithmetic.SaturatingAdd(total, withheld);
-            entries.Add(new EntryWithholding(entry.Id, gross, withheld, rule));
+            entries.Add(new EntryWithholding(
+                entry.Id,
+                gross,
+                withheld,
+                regularWithheld,
+                supplementalWithheld,
+                additionalWithheld,
+                rule));
         }
         return new WithholdingSummary(total, entries);
     }
 
-    private (uint Withheld, AppliedWithholding Rule) EntryWithholding(
+    private (uint Withheld, uint RegularWithheld, uint SupplementalWithheld, uint AdditionalWithheld, AppliedWithholding Rule)
+        CalculateEntryWithholding(
         IncomeEntry entry,
         uint gross,
         IncomePlanTotals totals,
         byte table,
         TaxAgeGroup ageGroup)
     {
+        if (entry.ActualWithholding is { } actualWithholding)
+        {
+            return (
+                actualWithholding,
+                actualWithholding,
+                0,
+                0,
+                new AppliedWithholding(AppliedWithholdingKind.ActualAmount));
+        }
         if (entry.Kind.IsDividend())
         {
-            return (0, new AppliedWithholding(AppliedWithholdingKind.None));
+            return (0, 0, 0, 0, new AppliedWithholding(AppliedWithholdingKind.None));
         }
-        if (entry.CustomWithholdingPercent is { } customPercent)
-        {
-            return (
-                Arithmetic.Percentage(gross, customPercent),
-                new AppliedWithholding(AppliedWithholdingKind.CustomPercent, Percent: customPercent));
-        }
+        var (baseWithheld, regularWithheld, supplementalWithheld, rule) =
+            CalculateBaseEntryWithholding(entry, gross, totals, table, ageGroup);
+        var additionalWithheld = Math.Min(
+            entry.RequestedAdditionalWithholding,
+            Arithmetic.SaturatingSubtract(gross, baseWithheld));
+        return (
+            Arithmetic.SaturatingAdd(baseWithheld, additionalWithheld),
+            regularWithheld,
+            supplementalWithheld,
+            additionalWithheld,
+            rule);
+    }
+
+    private (uint Withheld, uint RegularWithheld, uint SupplementalWithheld, AppliedWithholding Rule)
+        CalculateBaseEntryWithholding(
+        IncomeEntry entry,
+        uint gross,
+        IncomePlanTotals totals,
+        byte table,
+        TaxAgeGroup ageGroup)
+    {
         if (entry.AdjustmentApplies && AdjustmentPercent is { } adjustmentPercent)
         {
+            var withheld = Arithmetic.Percentage(gross, adjustmentPercent);
             return (
-                Arithmetic.Percentage(gross, adjustmentPercent),
+                withheld,
+                withheld,
+                0,
                 new AppliedWithholding(
                     AppliedWithholdingKind.AdjustmentPercent,
                     Percent: adjustmentPercent));
         }
         if (entry.PayerRole == PayerRole.Secondary)
         {
+            var withheld = Arithmetic.Percentage(gross, Withholding.SecondaryPayerRate);
             return (
-                Arithmetic.Percentage(gross, Withholding.SecondaryPayerRate),
+                withheld,
+                withheld,
+                0,
                 new AppliedWithholding(
                     AppliedWithholdingKind.Secondary30,
                     Percent: Withholding.SecondaryPayerRate));
@@ -657,8 +850,11 @@ public sealed class IncomePlan
         if (entry.Kind == IncomeKind.OneTimeSalary)
         {
             var percent = Withholding.OneTimeWithholdingRate(column, totals.WorkIncome);
+            var withheld = Arithmetic.Percentage(gross, percent);
             return (
-                Arithmetic.Percentage(gross, percent),
+                withheld,
+                withheld,
+                0,
                 new AppliedWithholding(AppliedWithholdingKind.OneTimeTable, Percent: percent));
         }
 
@@ -676,14 +872,17 @@ public sealed class IncomePlan
         {
             return (
                 regularWithheld,
+                regularWithheld,
+                0,
                 new AppliedWithholding(AppliedWithholdingKind.Table, column));
         }
 
         var vacationPercent = Withholding.OneTimeWithholdingRate(column, totals.WorkIncome);
+        var supplementalWithheld = Arithmetic.Percentage(vacationGross, vacationPercent);
         return (
-            Arithmetic.SaturatingAdd(
-                regularWithheld,
-                Arithmetic.Percentage(vacationGross, vacationPercent)),
+            Arithmetic.SaturatingAdd(regularWithheld, supplementalWithheld),
+            regularWithheld,
+            supplementalWithheld,
             new AppliedWithholding(
                 AppliedWithholdingKind.TableAndOneTime,
                 column,

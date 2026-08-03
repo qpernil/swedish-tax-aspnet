@@ -25,7 +25,8 @@ public sealed record TaxProjection(
     IncomeBasisEstimate PensionProgress,
     IncomeBasisEstimate SgiProgress)
 {
-    public const uint OwnCompanyDividendTaxPercent = 20;
+    public const uint OwnCompanyDividendTaxPercent =
+        DividendAllowanceRules2027.QualifiedDividendTaxPercent;
 
     public uint AnnualNet => Arithmetic.SaturatingSubtract(Totals.GrossIncome, TotalTax);
 

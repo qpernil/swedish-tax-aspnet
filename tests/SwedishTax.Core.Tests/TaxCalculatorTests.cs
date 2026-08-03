@@ -94,6 +94,19 @@ public sealed class TaxCalculatorTests
     }
 
     [Fact]
+    public void StateTaxUsesWideArithmeticForHighIncomes()
+    {
+        var annual = TaxCalculator.CalculateAnnualTax(
+            34,
+            TaxColumn.Column1,
+            300_000_000);
+
+        Assert.NotNull(annual);
+        Assert.Equal(299_982_600U, annual.TaxableIncome);
+        Assert.Equal(59_867_920U, annual.StateIncomeTax);
+    }
+
+    [Fact]
     public void AnnualizedFormulaMatchesEveryMonthlyAmountEntry()
     {
         for (var table = TaxCalculator.MinTaxTable; table <= TaxCalculator.MaxTaxTable; table++)

@@ -1,5 +1,3 @@
-@using System.Globalization
-
 <article class="income-entry-card">
     <div class="entry-heading">
         <label>
@@ -29,7 +27,7 @@
         </label>
         <label>
             <span>Payer role</span>
-            <select @bind="Entry.PayerRole">
+            <select value="@Entry.PayerRole" @onchange="PayerRoleChanged">
                 <option value="@PayerRole.Main">Main payer</option>
                 <option value="@PayerRole.Secondary">Secondary payer (@(global::SwedishTax.Core.Withholding.SecondaryPayerRate)%)</option>
             </select>
@@ -39,33 +37,53 @@
     @if (Entry.Kind.IsMonthly())
     {
         <div class="entry-grid period-grid">
-            <label><span>Start month</span><input type="number" min="1" max="12" @bind="StartMonth" /></label>
-            <label><span>Start day</span><input type="number" min="1" max="31" @bind="StartDay" /></label>
-            <label><span>End month</span><input type="number" min="1" max="12" @bind="EndMonth" /></label>
-            <label><span>End day</span><input type="number" min="1" max="31" @bind="EndDay" /></label>
+            <label>
+                <span>First day · month</span>
+                <select @bind="StartMonth">
+                    @for (var month = 1; month <= 12; month++)
+                    {
+                        <option value="@month">@MonthNames[month - 1]</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>First day · day</span>
+                <select @bind="StartDay">
+                    @for (var day = 1; day <= Date2026.DaysInMonth(StartMonth); day++)
+                    {
+                        <option value="@day">@day</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>Last day · month</span>
+                <select @bind="EndMonth">
+                    @for (var month = 1; month <= 12; month++)
+                    {
+                        <option value="@month">@MonthNames[month - 1]</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>Last day · day</span>
+                <select @bind="EndDay">
+                    @for (var day = 1; day <= Date2026.DaysInMonth(EndMonth); day++)
+                    {
+                        <option value="@day">@day</option>
+                    }
+                </select>
+            </label>
         </div>
+        <p class="microcopy">Both the first and last day are included.</p>
         @if (!Entry.IsValid)
         {
-            <p class="field-error">The end date must not be before the start date.</p>
+            <p class="field-error">The last day must be on or after the first day.</p>
         }
     }
 
     @if (!Entry.Kind.IsDividend())
     {
         <div class="option-grid">
-            <label class="check-field">
-                <input type="checkbox" @bind="HasCustomWithholding" />
-                <span>Use a custom withholding rate</span>
-            </label>
-            @if (HasCustomWithholding)
-            {
-                <label class="inline-number">
-                    <span>Custom rate</span>
-                    <input type="number" min="0" max="100" @bind="CustomWithholdingPercent" />
-                    <small>%</small>
-                </label>
-            }
-
             @if (HasAdjustment)
             {
                 <label class="check-field">
@@ -83,6 +101,46 @@
         </div>
     }
 
+    @if (Entry.Kind.IsSalary())
+    {
+        <label class="check-field">
+            <input type="checkbox" @bind="Entry.OwnCompanySourced" />
+            <span>Paid by my own company or qualifying group</span>
+        </label>
+    }
+
+    <div class="option-grid">
+        <label class="check-field">
+            <input type="checkbox" @bind="HasActualWithholding" />
+            <span>Use actual tax withheld</span>
+        </label>
+        @if (HasActualWithholding)
+        {
+            <label class="inline-number">
+                <span>Actual tax withheld</span>
+                <input type="number" min="0" max="100000000" @bind="ActualWithholding" />
+                <small>SEK</small>
+            </label>
+            <p class="microcopy">Use this after payments have been made. It replaces the estimated table, secondary-payer, jämkning, and voluntary-extra amounts for this row.</p>
+        }
+        @if (!Entry.Kind.IsDividend())
+        {
+            <label class="check-field">
+                <input type="checkbox" @bind="HasAdditionalWithholding" />
+                <span>Add voluntary extra withholding</span>
+            </label>
+            @if (HasAdditionalWithholding)
+            {
+                <label class="inline-number">
+                    <span>@(Entry.WithholdingPaymentCount > 1 ? "Extra per payment" : "Extra withholding")</span>
+                    <input type="number" min="0" max="100000000" @bind="AdditionalWithholdingPerPayment" />
+                    <small>SEK</small>
+                </label>
+                <p class="microcopy">Added on top of normal withholding for each payment. Planned extra for period: @FormatSek(Entry.RequestedAdditionalWithholding).</p>
+            }
+        }
+    </div>
+
     @if (Entry.Kind == IncomeKind.MonthlySalary)
     {
         <details class="entry-details">
@@ -96,22 +154,53 @@
                 <div class="entry-grid compact-grid">
                     <label><span>Annual entitlement</span><input type="number" min="0" max="100" @bind="VacationEntitlementDays" /></label>
                     <label><span>Payout days</span><input type="number" min="0" max="366" @bind="VacationPayoutDays" /></label>
-                    <label class="check-field"><input type="checkbox" @bind="VacationInPensionBasis" /><span>Include payout in pension salary basis</span></label>
+                    <label class="check-field"><input type="checkbox" @bind="VacationInPensionBasis" /><span>Treat this vacation payout as pensionable</span></label>
                 </div>
                 <p class="microcopy">Estimated vacation payout: @FormatSek(Entry.VacationCompensationAmount)</p>
+                @if (VacationInPensionBasis)
+                {
+                    @if (!HasVacationPensionOverride)
+                    {
+                        <p class="microcopy">Calculated pension contribution for this vacation payout: @FormatSek(Entry.VacationPensionPremiumAmount)</p>
+                    }
+                    <label class="check-field">
+                        <input type="checkbox" @bind="HasVacationPensionOverride" />
+                        <span>Use actual pension contribution for this vacation payout</span>
+                    </label>
+                    @if (HasVacationPensionOverride)
+                    {
+                        <label class="inline-number">
+                            <span>Actual pension contribution for vacation payout</span>
+                            <input type="number" min="0" max="100000000" @bind="ActualVacationPensionContribution" />
+                            <small>SEK</small>
+                        </label>
+                    }
+                }
             }
 
+            <label class="check-field">
+                <input type="checkbox" @bind="Entry.IncludedInPensionSalaryBasis" />
+                <span>Treat this salary as pensionable</span>
+            </label>
             <label class="check-field">
                 <input type="checkbox" @bind="HasRegularPension" />
                 <span>Include an employer occupational-pension contribution</span>
             </label>
             @if (HasRegularPension)
             {
-                <label class="inline-number">
-                    <span>Actual monthly premium (blank uses benchmark)</span>
-                    <input type="number" min="0" max="100000000" value="@PensionOverrideText" @onchange="PensionOverrideChanged" />
-                    <small>SEK</small>
+                <p class="microcopy">Calculated monthly benchmark: @FormatSek(PensionBenchmarkMonthly)</p>
+                <label class="check-field">
+                    <input type="checkbox" @bind="HasPensionOverride" />
+                    <span>Use actual monthly pension contribution</span>
                 </label>
+                @if (HasPensionOverride)
+                {
+                    <label class="inline-number">
+                        <span>Actual monthly pension contribution</span>
+                        <input type="number" min="0" max="100000000" @bind="ActualMonthlyPensionContribution" />
+                        <small>SEK</small>
+                    </label>
+                }
                 <p class="microcopy">Annual employer contribution: @FormatSek(Entry.RegularPensionPremiumAmount)</p>
             }
         </details>
@@ -122,16 +211,28 @@
         <details class="entry-details">
             <summary>Occupational pension</summary>
             <label class="check-field">
+                <input type="checkbox" @bind="Entry.IncludedInPensionSalaryBasis" />
+                <span>Treat this salary as pensionable</span>
+            </label>
+            <label class="check-field">
                 <input type="checkbox" @bind="HasRegularPension" />
                 <span>Include an employer occupational-pension contribution</span>
             </label>
             @if (HasRegularPension)
             {
-                <label class="inline-number">
-                    <span>Actual monthly premium (blank uses benchmark)</span>
-                    <input type="number" min="0" max="100000000" value="@PensionOverrideText" @onchange="PensionOverrideChanged" />
-                    <small>SEK</small>
+                <p class="microcopy">Calculated monthly benchmark: @FormatSek(PensionBenchmarkMonthly)</p>
+                <label class="check-field">
+                    <input type="checkbox" @bind="HasPensionOverride" />
+                    <span>Use actual monthly pension contribution</span>
                 </label>
+                @if (HasPensionOverride)
+                {
+                    <label class="inline-number">
+                        <span>Actual monthly pension contribution</span>
+                        <input type="number" min="0" max="100000000" @bind="ActualMonthlyPensionContribution" />
+                        <small>SEK</small>
+                    </label>
+                }
                 <p class="microcopy">Annual employer contribution: @FormatSek(Entry.RegularPensionPremiumAmount)</p>
             }
         </details>
@@ -148,16 +249,22 @@
             @if (HasSalaryExchange)
             {
                 <div class="entry-grid compact-grid">
-                    <label><span>Sacrificed salary</span><input type="number" min="0" max="@Entry.Amount" @bind="SalaryExchangeSacrifice" /></label>
-                    <label><span>Employer uplift</span><input type="number" min="0" max="10000" step="1" @bind="SalaryExchangeUplift" /></label>
+                    <label><span>Salary to exchange</span><input type="number" min="0" max="@Entry.Amount" @bind="SalaryExchangeSacrifice" /></label>
+                    <label><span>Employer uplift</span><input type="number" min="0" max="100" step="0.01" @bind="SalaryExchangeUpliftPercentText" /><small>%</small></label>
                     <label class="check-field"><input type="checkbox" @bind="SalaryExchangeAddsUplift" /><span>Employer adds uplift</span></label>
-                    <label class="check-field"><input type="checkbox" @bind="Entry.IncludedInPensionSalaryBasis" /><span>Payment is in pension salary basis</span></label>
+                    <label class="check-field"><input type="checkbox" @bind="Entry.IncludedInPensionSalaryBasis" /><span>Treat this payment as pensionable</span></label>
                 </div>
                 @if (Allowance is { } allowance)
                 {
+                    <dl class="value-list comparison-list">
+                        <div><dt>Pensionable salary before exchange</dt><dd>@FormatSek(allowance.PensionSalaryBasisBefore)</dd></div>
+                        <div><dt>Pensionable salary after exchange</dt><dd>@FormatSek(allowance.PensionSalaryBasisAfter)</dd></div>
+                        <div><dt>35% contribution ceiling</dt><dd>@FormatSek(allowance.Ceiling)</dd></div>
+                        <div><dt>Contribution room</dt><dd>@FormatSek(allowance.AvailableContribution)</dd></div>
+                    </dl>
                     <p class="microcopy">
-                        Pension contribution @FormatSek(Entry.SalaryExchangePensionContribution).
-                        Maximum sacrifice within the @(SalaryExchange.EmployerPensionAllowanceRateBasisPoints / 100.0)% allowance: @FormatSek(allowance.MaximumSacrifice).
+                        Resulting pension contribution @FormatSek(Entry.SalaryExchangePensionContribution).
+                        Maximum salary exchange within the @PercentageText.FormatBasisPoints(SalaryExchange.EmployerPensionAllowanceRateBasisPoints)% allowance: @FormatSek(allowance.MaximumSacrifice).
                     </p>
                 }
             }
@@ -166,15 +273,18 @@
 
     <footer class="entry-result">
         <span>@EligibilityText</span>
-        <span>Annual cash <strong>@FormatSek(Entry.TotalAnnualAmount)</strong></span>
+        <span>@CashSummaryLabel <strong>@FormatSek(Entry.TotalAnnualAmount)</strong></span>
         @if (Withholding is { } withholding)
         {
-            <span>Calculated withholding <strong>@FormatSek(withholding.Withheld)</strong> · @RuleText(withholding.Rule)</span>
+            <span>Calculated withholding <strong>@FormatSek(withholding.Withheld)</strong> · @RuleText(withholding.Rule)@AdditionalRuleText(withholding)</span>
         }
     </footer>
 </article>
 
 @code {
+    private static readonly string[] MonthNames =
+        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
     [Parameter, EditorRequired] public IncomeEntry Entry { get; set; } = null!;
     [Parameter] public bool HasAdjustment { get; set; }
     [Parameter] public EntryWithholding? Withholding { get; set; }
@@ -184,8 +294,14 @@
     private string AmountLabel => Entry.Kind switch
     {
         IncomeKind.MonthlySalary or IncomeKind.MonthlyOccupationalPension => "Monthly amount",
-        IncomeKind.OneTimeSalary => "One-time amount",
+        IncomeKind.OneTimeSalary or IncomeKind.OwnCompanyDividend => "One-time amount",
         _ => "Annual amount",
+    };
+
+    private string CashSummaryLabel => Entry.Kind switch
+    {
+        IncomeKind.OneTimeSalary or IncomeKind.OwnCompanyDividend => "One-time total",
+        _ => "Annual cash",
     };
 
     private string EligibilityText => Entry.Kind switch
@@ -195,22 +311,63 @@
         _ => "PGI — · SGI —",
     };
 
-    private byte StartMonth { get => Entry.Start.Month; set => Entry.Start = new(value, Entry.Start.Day); }
-    private byte StartDay { get => Entry.Start.Day; set => Entry.Start = new(Entry.Start.Month, value); }
-    private byte EndMonth { get => Entry.End.Month; set => Entry.End = new(value, Entry.End.Day); }
-    private byte EndDay { get => Entry.End.Day; set => Entry.End = new(Entry.End.Month, value); }
-
-    private bool HasCustomWithholding
+    private byte StartMonth
     {
-        get => Entry.CustomWithholdingPercent.HasValue;
-        set => Entry.CustomWithholdingPercent = value
-            ? global::SwedishTax.Core.Withholding.SecondaryPayerRate
-            : null;
+        get => Entry.Start.Clamped.Month;
+        set
+        {
+            var month = Math.Clamp(value, (byte)1, (byte)12);
+            Entry.Start = new(month, Math.Min(Entry.Start.Clamped.Day, Date2026.DaysInMonth(month)));
+        }
     }
-    private uint CustomWithholdingPercent
+    private byte StartDay
     {
-        get => Entry.CustomWithholdingPercent ?? 0;
-        set => Entry.CustomWithholdingPercent = Math.Min(value, 100);
+        get => Entry.Start.Clamped.Day;
+        set => Entry.Start = new(StartMonth, Math.Clamp(value, (byte)1, Date2026.DaysInMonth(StartMonth)));
+    }
+    private byte EndMonth
+    {
+        get => Entry.End.Clamped.Month;
+        set
+        {
+            var month = Math.Clamp(value, (byte)1, (byte)12);
+            Entry.End = new(month, Math.Min(Entry.End.Clamped.Day, Date2026.DaysInMonth(month)));
+        }
+    }
+    private byte EndDay
+    {
+        get => Entry.End.Clamped.Day;
+        set => Entry.End = new(EndMonth, Math.Clamp(value, (byte)1, Date2026.DaysInMonth(EndMonth)));
+    }
+
+    private bool HasAdditionalWithholding
+    {
+        get => Entry.AdditionalWithholdingPerPayment.HasValue;
+        set
+        {
+            Entry.AdditionalWithholdingPerPayment = value ? 1_000 : null;
+            if (value) Entry.ActualWithholding = null;
+        }
+    }
+    private uint AdditionalWithholdingPerPayment
+    {
+        get => Entry.AdditionalWithholdingPerPayment ?? 0;
+        set => Entry.AdditionalWithholdingPerPayment = value;
+    }
+
+    private bool HasActualWithholding
+    {
+        get => Entry.ActualWithholding.HasValue;
+        set
+        {
+            Entry.ActualWithholding = value ? 0 : null;
+            if (value) Entry.AdditionalWithholdingPerPayment = null;
+        }
+    }
+    private uint ActualWithholding
+    {
+        get => Entry.ActualWithholding ?? 0;
+        set => Entry.ActualWithholding = value;
     }
 
     private bool HasVacationCompensation
@@ -233,7 +390,36 @@
     private bool VacationInPensionBasis
     {
         get => Entry.VacationCompensation?.IncludedInPensionSalaryBasis ?? false;
-        set { if (Entry.VacationCompensation is { } vacation) Entry.VacationCompensation = vacation with { IncludedInPensionSalaryBasis = value }; }
+        set
+        {
+            if (Entry.VacationCompensation is not { } vacation) return;
+            Entry.VacationCompensation = vacation with
+            {
+                IncludedInPensionSalaryBasis = value,
+                PensionPremiumOverride = value ? vacation.PensionPremiumOverride : null,
+            };
+        }
+    }
+    private bool HasVacationPensionOverride
+    {
+        get => Entry.VacationCompensation?.PensionPremiumOverride.HasValue ?? false;
+        set
+        {
+            if (Entry.VacationCompensation is not { } vacation) return;
+            Entry.VacationCompensation = vacation with
+            {
+                PensionPremiumOverride = value ? Entry.VacationPensionPremiumAmount : null,
+            };
+        }
+    }
+    private uint ActualVacationPensionContribution
+    {
+        get => Entry.VacationCompensation?.PensionPremiumOverride ?? 0;
+        set
+        {
+            if (Entry.VacationCompensation is { } vacation)
+                Entry.VacationCompensation = vacation with { PensionPremiumOverride = value };
+        }
     }
 
     private bool HasRegularPension
@@ -241,7 +427,26 @@
         get => Entry.RegularPensionPremium.HasValue;
         set => Entry.RegularPensionPremium = value ? new RegularPensionPremium() : null;
     }
-    private string PensionOverrideText => Entry.RegularPensionPremium?.MonthlyOverride?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+    private uint PensionBenchmarkMonthly => RegularPensionPremium.BenchmarkMonthly(
+        Entry.Kind == IncomeKind.AnnualSalary ? Entry.Amount / 12 : Entry.Amount);
+    private bool HasPensionOverride
+    {
+        get => Entry.RegularPensionPremium?.MonthlyOverride.HasValue ?? false;
+        set
+        {
+            if (Entry.RegularPensionPremium is { } premium)
+                Entry.RegularPensionPremium = premium with { MonthlyOverride = value ? PensionBenchmarkMonthly : null };
+        }
+    }
+    private uint ActualMonthlyPensionContribution
+    {
+        get => Entry.RegularPensionPremium?.MonthlyOverride ?? 0;
+        set
+        {
+            if (Entry.RegularPensionPremium is { } premium)
+                Entry.RegularPensionPremium = premium with { MonthlyOverride = value };
+        }
+    }
 
     private bool HasSalaryExchange
     {
@@ -258,10 +463,15 @@
         get => Entry.SalaryExchange?.EmployerAddsUplift ?? false;
         set { if (Entry.SalaryExchange is { } exchange) Entry.SalaryExchange = exchange with { EmployerAddsUplift = value }; }
     }
-    private uint SalaryExchangeUplift
+    private string SalaryExchangeUpliftPercentText
     {
-        get => Entry.SalaryExchange?.UpliftBasisPoints ?? 0;
-        set { if (Entry.SalaryExchange is { } exchange) Entry.SalaryExchange = exchange with { UpliftBasisPoints = value }; }
+        get => PercentageText.FormatBasisPoints(Entry.SalaryExchange?.UpliftBasisPoints ?? 0);
+        set
+        {
+            if (Entry.SalaryExchange is not { } exchange) return;
+            if (PercentageText.TryParseBasisPoints(value, 10_000, out var basisPoints))
+                Entry.SalaryExchange = exchange with { UpliftBasisPoints = basisPoints };
+        }
     }
 
     private Task Remove() => OnRemove.InvokeAsync(Entry.Id);
@@ -269,37 +479,30 @@
     private void KindChanged(ChangeEventArgs args)
     {
         if (!Enum.TryParse<IncomeKind>(args.Value?.ToString(), out var kind)) return;
-        Entry.Kind = kind;
-        Entry.RegularPensionPremium = kind is IncomeKind.AnnualSalary or IncomeKind.MonthlySalary
-            ? Entry.RegularPensionPremium ?? new RegularPensionPremium()
-            : null;
-        if (kind != IncomeKind.MonthlySalary) Entry.VacationCompensation = null;
-        if (kind != IncomeKind.OneTimeSalary) Entry.SalaryExchange = null;
-        Entry.IncludedInPensionSalaryBasis = kind is IncomeKind.AnnualSalary or IncomeKind.MonthlySalary;
+        Entry.SetKind(kind, HasAdjustment);
     }
 
-    private void PensionOverrideChanged(ChangeEventArgs args)
+    private void PayerRoleChanged(ChangeEventArgs args)
     {
-        if (Entry.RegularPensionPremium is not { } premium) return;
-        var text = args.Value?.ToString();
-        Entry.RegularPensionPremium = premium with
-        {
-            MonthlyOverride = uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value)
-                ? value
-                : null,
-        };
+        if (!Enum.TryParse<PayerRole>(args.Value?.ToString(), out var role)) return;
+        Entry.SetPayerRole(role, HasAdjustment);
     }
 
     private static string RuleText(AppliedWithholding rule) => rule.Kind switch
     {
+        AppliedWithholdingKind.ActualAmount => "entered actual amount",
         AppliedWithholdingKind.Table => $"table column {(byte)rule.Column!}",
         AppliedWithholdingKind.TableAndOneTime => $"table column {(byte)rule.Column!} plus one-time table at {rule.Percent}%",
         AppliedWithholdingKind.OneTimeTable => $"one-time-payment table at {rule.Percent}%",
         AppliedWithholdingKind.Secondary30 => "secondary payer at 30%",
         AppliedWithholdingKind.AdjustmentPercent => $"jämkning at {rule.Percent}%",
-        AppliedWithholdingKind.CustomPercent => $"custom rate at {rule.Percent}%",
         _ => "no withholding",
     };
+
+    private static string AdditionalRuleText(EntryWithholding withholding) =>
+        withholding.AdditionalWithheld == 0
+            ? string.Empty
+            : $" + {FormatSek(withholding.AdditionalWithheld)} voluntary extra";
 
     private static string FormatSek(uint value) => $"{value:N0} SEK";
 }

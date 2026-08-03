@@ -180,7 +180,7 @@
                     @foreach (var estimate in CurrentWithholding.Entries)
                     {
                         var entry = Plan.Entries.First(item => item.Id == estimate.EntryId);
-                        <div><dt>@EntryName(entry) <small>@WithholdingRuleText(estimate.Rule)</small></dt><dd>@FormatSek(estimate.Withheld)</dd></div>
+                        <div><dt>@EntryName(entry) <small>@WithholdingRuleText(estimate.Rule)@AdditionalRuleText(estimate)</small></dt><dd>@FormatSek(estimate.Withheld)</dd></div>
                     }
                     <div class="total-row"><dt>Total withheld</dt><dd>@FormatSek(calculation.WithheldTax)</dd></div>
                 </dl>
@@ -264,6 +264,44 @@
         <p class="invalid-plan">Correct the date range in the income plan to calculate tax.</p>
     }
 
+    <section class="data-section dividend-allowance-section">
+        <details>
+            <summary><strong>Preliminary 2027 dividend allowance</strong></summary>
+            <div class="option-grid">
+                <label class="check-field">
+                    <input type="checkbox" @bind="Plan.DividendAllowance.OnePersonCompany" />
+                    <span>One-person company — marked salary is total payroll</span>
+                </label>
+                <label><span>Your ownership</span><input type="number" min="0" max="100" step="0.01" @bind="OwnershipPercentText" /><small>%</small></label>
+                <label><span>Spouse ownership</span><input type="number" min="0" max="100" step="0.01" @bind="SpouseOwnershipPercentText" /><small>%</small></label>
+                <label><span>Ownership in other qualified companies</span><input type="number" min="0" max="10000" step="0.01" @bind="OtherOwnershipPercentText" /><small>%</small></label>
+                @if (!Plan.DividendAllowance.OnePersonCompany)
+                {
+                    <label><span>Company/group payroll in 2026</span><input type="number" min="0" @bind="Plan.DividendAllowance.CompanyCashPayroll2026" /><small>SEK</small></label>
+                    <label><span>Highest related person's salary</span><input type="number" min="0" @bind="Plan.DividendAllowance.HighestRelatedCashSalary2026" /><small>SEK</small></label>
+                }
+                <label><span>Acquisition cost</span><input type="number" min="0" @bind="Plan.DividendAllowance.AcquisitionCost" /><small>SEK</small></label>
+                <label><span>Saved allowance</span><input type="number" min="0" @bind="Plan.DividendAllowance.SavedAllowance" /><small>SEK</small></label>
+            </div>
+            @if (DividendAllowance.Allowance is { } allowance)
+            {
+                <dl class="value-list comparison-list">
+                    <div class="total-row"><dt>Maximum dividend at 20%</dt><dd>@FormatSek(allowance.Total)</dd></div>
+                    <div><dt>Basic amount</dt><dd>@FormatSek(allowance.BasicAmount)</dd></div>
+                    <div><dt>Wage-based allowance</dt><dd>@FormatSek(allowance.WageAllowance)</dd></div>
+                    <div><dt>Personal tax if fully used</dt><dd>@FormatSek(allowance.TaxAtTwentyPercent)</dd></div>
+                    <div class="total-row"><dt>Net after 20% tax</dt><dd>@FormatSek(allowance.NetAfterTwentyPercentTax)</dd></div>
+                    <div><dt>Marked 2026 own-company salary</dt><dd>@FormatSek(allowance.OwnerCashSalary)</dd></div>
+                </dl>
+            }
+            else if (DividendAllowance.Issue is { } issue)
+            {
+                <p class="invalid-plan">@DividendAllowanceIssueText(issue)</p>
+            }
+            <p class="section-copy">The actual dividend also requires sufficient free equity, a prudence assessment, and a shareholder decision. Dividend paid in 2027 is declared on K10 in 2028.</p>
+        </details>
+    </section>
+
     <footer class="page-footer">
         Preliminary estimate based on Skatteverket tables and SKV 433, edition 36. Dividend tax assumes the amount is within the applicable gränsbelopp. Försäkringskassan determines actual SGI.
     </footer>
@@ -278,10 +316,38 @@
     private bool editorOpen;
 
     private WithholdingSummary CurrentWithholding => Plan.EstimateWithholding(table, ageGroup);
-    private bool HasAdjustment { get => Plan.AdjustmentPercent.HasValue; set => Plan.AdjustmentPercent = value ? Withholding.SecondaryPayerRate : null; }
+    private bool HasAdjustment { get => Plan.AdjustmentPercent.HasValue; set => Plan.SetAdjustmentEnabled(value); }
     private uint AdjustmentPercent { get => Plan.AdjustmentPercent ?? 0; set => Plan.AdjustmentPercent = Math.Min(value, 100); }
 
     private TaxProjection? Calculation => TaxProjection.Calculate(table, ageGroup, Plan);
+    private DividendAllowanceResult DividendAllowance => Plan.CalculateDividendAllowance2027();
+    private string OwnershipPercentText
+    {
+        get => PercentageText.FormatBasisPoints(Plan.DividendAllowance.OwnershipBasisPoints);
+        set
+        {
+            if (PercentageText.TryParseBasisPoints(value, 10_000, out var basisPoints))
+                Plan.DividendAllowance.OwnershipBasisPoints = basisPoints;
+        }
+    }
+    private string SpouseOwnershipPercentText
+    {
+        get => PercentageText.FormatBasisPoints(Plan.DividendAllowance.SpouseOwnershipBasisPoints);
+        set
+        {
+            if (PercentageText.TryParseBasisPoints(value, 10_000, out var basisPoints))
+                Plan.DividendAllowance.SpouseOwnershipBasisPoints = basisPoints;
+        }
+    }
+    private string OtherOwnershipPercentText
+    {
+        get => PercentageText.FormatBasisPoints(Plan.DividendAllowance.OtherQualifiedOwnershipBasisPoints);
+        set
+        {
+            if (PercentageText.TryParseBasisPoints(value, 1_000_000, out var basisPoints))
+                Plan.DividendAllowance.OtherQualifiedOwnershipBasisPoints = basisPoints;
+        }
+    }
 
     private void AddIncome() => Plan.AddEntry(newIncomeKind);
     private void RemoveEntry(ulong id) => Plan.RemoveEntry(id);
@@ -295,13 +361,24 @@
     private static string CashEquation(IncomeEntry entry) => entry.Kind.IsMonthly() ? $"{FormatSek(entry.Amount)} monthly over selected dates" : entry.Kind == IncomeKind.OwnCompanyDividend ? "dividend cash" : "entered annual/one-time cash";
     private static string WithholdingRuleText(AppliedWithholding rule) => rule.Kind switch
     {
+        AppliedWithholdingKind.ActualAmount => "entered actual amount",
         AppliedWithholdingKind.Table => $"table column {(byte)rule.Column!}",
         AppliedWithholdingKind.TableAndOneTime => $"table column {(byte)rule.Column!} + one-time table {rule.Percent}%",
         AppliedWithholdingKind.OneTimeTable => $"one-time table {rule.Percent}%",
         AppliedWithholdingKind.Secondary30 => "secondary payer 30%",
         AppliedWithholdingKind.AdjustmentPercent => $"jämkning {rule.Percent}%",
-        AppliedWithholdingKind.CustomPercent => $"custom {rule.Percent}%",
         _ => "no withholding",
+    };
+    private static string AdditionalRuleText(EntryWithholding withholding) =>
+        withholding.AdditionalWithheld == 0
+            ? string.Empty
+            : $" + {FormatSek(withholding.AdditionalWithheld)} voluntary extra";
+    private static string DividendAllowanceIssueText(DividendAllowanceIssue issue) => issue switch
+    {
+        DividendAllowanceIssue.OwnershipExceedsOneHundredPercent => "Your ownership in this company cannot exceed 100%.",
+        DividendAllowanceIssue.SpouseOwnershipExceedsCompany => "Your and your spouse's combined ownership cannot exceed 100%.",
+        DividendAllowanceIssue.PersonalSalaryExceedsCompanyPayroll => "Owner or related-person salary cannot exceed company/group payroll.",
+        _ => "The exact 2027 acquisition-cost interest rate is not known until 30 November 2026.",
     };
 
     private static RenderFragment IncomeBasisCard(string label, IncomeBasisEstimate estimate) => builder =>

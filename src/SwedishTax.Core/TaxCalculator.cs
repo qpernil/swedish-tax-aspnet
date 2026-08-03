@@ -124,7 +124,7 @@ public static class TaxCalculator
         var taxableIncome = SaturatingSubtract(assessedIncome, basicAllowance);
 
         var stateIncomeTax = taxableIncome >= StateTaxThreshold + 200
-            ? (taxableIncome - StateTaxThreshold) * 20 / 100
+            ? PercentageFloor(taxableIncome - StateTaxThreshold, 20, 100)
             : 0;
         var municipalRate = (uint)table * 100 - BurialAndReligiousRate;
         var municipalIncomeTax = PercentageFloor(taxableIncome, municipalRate, 10_000);

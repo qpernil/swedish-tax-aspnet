@@ -134,7 +134,18 @@ public sealed class IncomePlanningTests
     }
 
     [Fact]
-    public void WithholdingPrecedenceIsCustomThenAdjustmentThenSecondary()
+    public void VacationCompensationSaturatesAtNumericLimits()
+    {
+        var vacation = new VacationCompensation(
+            uint.MaxValue,
+            uint.MaxValue,
+            true);
+
+        Assert.Equal(uint.MaxValue, vacation.Amount(uint.MaxValue));
+    }
+
+    [Fact]
+    public void WithholdingRulesAndAdditionalAmountCompose()
     {
         var plan = IncomePlan.WithAnnualSalary(700_000);
         var pensionId = plan.AddEntry(IncomeKind.AnnualOccupationalPension);
@@ -152,10 +163,220 @@ public sealed class IncomePlanningTests
         Assert.Equal(38_000U, estimate.Withheld);
         Assert.Equal(AppliedWithholdingKind.AdjustmentPercent, estimate.Rule.Kind);
 
-        pension.CustomWithholdingPercent = 42;
+        pension.AdditionalWithholdingPerPayment = 500;
         estimate = EstimateFor(plan, pensionId);
-        Assert.Equal(42_000U, estimate.Withheld);
-        Assert.Equal(AppliedWithholdingKind.CustomPercent, estimate.Rule.Kind);
+        Assert.Equal(44_000U, estimate.Withheld);
+        Assert.Equal(6_000U, estimate.AdditionalWithheld);
+        Assert.Equal(AppliedWithholdingKind.AdjustmentPercent, estimate.Rule.Kind);
+    }
+
+    [Fact]
+    public void ActualWithholdingOverridesEveryIncomeKind()
+    {
+        var plan = IncomePlan.WithAnnualSalary(700_000);
+        var kinds = Enum.GetValues<IncomeKind>();
+        for (var index = 0; index < kinds.Length; index++)
+        {
+            IncomeEntry entry;
+            if (index == 0)
+            {
+                entry = plan.Entries[0];
+            }
+            else
+            {
+                var id = plan.AddEntry(kinds[index]);
+                entry = plan.Entries.Single(candidate => candidate.Id == id);
+            }
+            entry.SetKind(kinds[index], false);
+            entry.Amount = (uint)(100_000 + index);
+            entry.ActualWithholding = (uint)(10_000 + index);
+            entry.AdditionalWithholdingPerPayment = 99;
+            entry.AdjustmentApplies = true;
+            entry.PayerRole = PayerRole.Secondary;
+        }
+        plan.AdjustmentPercent = 88;
+
+        var withholding = plan.EstimateWithholding(32, TaxAgeGroup.Under66AtYearStart);
+
+        Assert.Equal(kinds.Length, withholding.Entries.Count);
+        for (var index = 0; index < withholding.Entries.Count; index++)
+        {
+            var row = withholding.Entries[index];
+            Assert.Equal((uint)(10_000 + index), row.Withheld);
+            Assert.Equal(row.Withheld, row.RegularWithheld);
+            Assert.Equal(0U, row.SupplementalWithheld);
+            Assert.Equal(0U, row.AdditionalWithheld);
+            Assert.Equal(AppliedWithholdingKind.ActualAmount, row.Rule.Kind);
+        }
+    }
+
+    [Fact]
+    public void AdditionalWithholdingUsesPaymentCountAndCannotExceedGross()
+    {
+        var plan = IncomePlan.WithMonthlySalary(10_000);
+        var salary = plan.Entries[0];
+        salary.Start = new Date2026(3, 15);
+        salary.End = new Date2026(5, 1);
+        salary.AdditionalWithholdingPerPayment = 1_000;
+
+        var estimate = EstimateFor(plan, salary.Id);
+        Assert.Equal(3U, salary.WithholdingPaymentCount);
+        Assert.Equal(3_000U, estimate.AdditionalWithheld);
+
+        salary.AdditionalWithholdingPerPayment = uint.MaxValue;
+        estimate = EstimateFor(plan, salary.Id);
+        Assert.Equal(estimate.Gross, estimate.Withheld);
+        Assert.Equal(estimate.Gross - estimate.RegularWithheld, estimate.AdditionalWithheld);
+    }
+
+    [Fact]
+    public void Preliminary2027DividendAllowanceMatchesRust()
+    {
+        var plan = IncomePlan.WithAnnualSalary(800_000);
+        plan.Entries[0].OwnCompanySourced = true;
+
+        var result = plan.CalculateDividendAllowance2027();
+
+        var allowance = Assert.IsType<DividendAllowance2027>(result.Allowance);
+        Assert.Equal(333_600U, allowance.BasicAmount);
+        Assert.Equal(132_800U, allowance.JointWageBasisAfterDeduction);
+        Assert.Equal(66_400U, allowance.WageAllowance);
+        Assert.Equal(400_000U, allowance.Total);
+        Assert.Equal(80_000U, allowance.TaxAtTwentyPercent);
+    }
+
+    [Fact]
+    public void Preliminary2027OwnershipAllocationFollowsSkatteverketWorkedExamples()
+    {
+        var inputs = new DividendAllowanceInputs2027 { OwnershipBasisPoints = 5_000 };
+        Assert.Equal(166_800U, inputs.Calculate(0).Allowance!.Value.BasicAmount);
+
+        inputs.OwnershipBasisPoints = 2_500;
+        inputs.OtherQualifiedOwnershipBasisPoints = 3_300;
+        Assert.Equal(83_400U, inputs.Calculate(0).Allowance!.Value.BasicAmount);
+
+        inputs.OtherQualifiedOwnershipBasisPoints = 17_500;
+        Assert.Equal(41_700U, inputs.Calculate(0).Allowance!.Value.BasicAmount);
+    }
+
+    [Fact]
+    public void Preliminary2027WageAllowanceFollowsSkatteverketWorkedExamples()
+    {
+        var agnes = new DividendAllowanceInputs2027
+        {
+            OnePersonCompany = false,
+            OwnershipBasisPoints = 7_000,
+            CompanyCashPayroll2026 = 4_000_000,
+        };
+        var result = agnes.Calculate(400_000).Allowance!.Value;
+        Assert.Equal(2_800_000U, result.JointWageBasis);
+        Assert.Equal(2_132_800U, result.JointWageBasisAfterDeduction);
+        Assert.Equal(1_066_400U, result.WageAllowance);
+
+        var birger = new DividendAllowanceInputs2027
+        {
+            OnePersonCompany = false,
+            OwnershipBasisPoints = 3_000,
+            CompanyCashPayroll2026 = 4_000_000,
+        };
+        result = birger.Calculate(300_000).Allowance!.Value;
+        Assert.Equal(1_200_000U, result.JointWageBasis);
+        Assert.Equal(532_800U, result.JointWageBasisAfterDeduction);
+        Assert.Equal(266_400U, result.WageAllowance);
+
+        var amy = new DividendAllowanceInputs2027
+        {
+            OnePersonCompany = false,
+            OwnershipBasisPoints = 6_000,
+            SpouseOwnershipBasisPoints = 4_000,
+            CompanyCashPayroll2026 = 4_000_000,
+            HighestRelatedCashSalary2026 = 300_000,
+        };
+        Assert.Equal(999_840U, amy.Calculate(500_000).Allowance!.Value.WageAllowance);
+
+        var gedion = new DividendAllowanceInputs2027
+        {
+            OnePersonCompany = false,
+            OwnershipBasisPoints = 4_000,
+            SpouseOwnershipBasisPoints = 6_000,
+            CompanyCashPayroll2026 = 4_000_000,
+            HighestRelatedCashSalary2026 = 500_000,
+        };
+        Assert.Equal(666_560U, gedion.Calculate(300_000).Allowance!.Value.WageAllowance);
+    }
+
+    [Fact]
+    public void Preliminary2027AllowanceFollowsSkatteverketValterAndHelleExamples()
+    {
+        var valter = new DividendAllowanceInputs2027
+        {
+            OnePersonCompany = false,
+            CompanyCashPayroll2026 = 1_000_000,
+            AcquisitionCost = 25_000,
+            SavedAllowance = 750_000,
+        }.Calculate(600_000).Allowance!.Value;
+        Assert.Equal(333_600U, valter.BasicAmount);
+        Assert.Equal(166_400U, valter.WageAllowance);
+        Assert.Equal(0U, valter.AcquisitionCostInterest);
+        Assert.Equal(1_250_000U, valter.Total);
+        Assert.Equal(250_000U, valter.TaxAtTwentyPercent);
+        Assert.Equal(1_000_000U, valter.NetAfterTwentyPercentTax);
+
+        var helle = new DividendAllowanceInputs2027
+        {
+            AcquisitionCost = 250_000,
+            AcquisitionCostInterestBasisPoints = 1_155,
+        }.Calculate(0).Allowance!.Value;
+        Assert.Equal(150_000U, helle.AcquisitionCostInterestBasis);
+        Assert.Equal(17_325U, helle.AcquisitionCostInterest);
+    }
+
+    [Fact]
+    public void QualifiedDividendTaxMatchesSkatteverketParisaExample()
+    {
+        var plan = IncomePlan.WithAnnualSalary(420_000);
+        var dividendId = plan.AddEntry(IncomeKind.OwnCompanyDividend);
+        plan.Entries.Single(entry => entry.Id == dividendId).Amount = 78_000;
+
+        var calculation = Assert.IsType<TaxProjection>(
+            TaxProjection.Calculate(32, TaxAgeGroup.Under66AtYearStart, plan));
+        Assert.Equal(15_600U, calculation.DividendTax);
+        Assert.Equal(62_400U, 78_000U - calculation.DividendTax);
+    }
+
+    [Fact]
+    public void SalaryExchangeValidationMatchesRust()
+    {
+        var plan = IncomePlan.WithAnnualSalary(1_000_000);
+        var id = plan.AddEntry(IncomeKind.OneTimeSalary);
+        var entry = plan.Entries.Single(candidate => candidate.Id == id);
+        entry.Amount = 400_000;
+        entry.SalaryExchange = new SalaryExchange(400_000);
+
+        var issue = Assert.IsType<IncomePlanValidationIssue>(plan.ValidationIssue);
+
+        Assert.Equal(IncomePlanValidationIssueKind.SalaryExchangeExceedsAllowance, issue.Kind);
+        Assert.Equal(id, issue.EntryId);
+        Assert.False(plan.IsValid);
+    }
+
+    [Fact]
+    public void JämkningDefaultsToMainPayersAndCanBeOverriddenPerEntry()
+    {
+        var plan = IncomePlan.WithAnnualSalary(700_000);
+        var pensionId = plan.AddEntry(IncomeKind.AnnualOccupationalPension);
+        var pension = plan.Entries.Single(entry => entry.Id == pensionId);
+        pension.PayerRole = PayerRole.Secondary;
+
+        plan.SetAdjustmentEnabled(true);
+
+        Assert.True(plan.Entries[0].AdjustmentApplies);
+        Assert.False(pension.AdjustmentApplies);
+        pension.SetPayerRole(PayerRole.Main, true);
+        Assert.True(pension.AdjustmentApplies);
+        pension.AdjustmentApplies = false;
+        pension.SetPayerRole(PayerRole.Main, true);
+        Assert.False(pension.AdjustmentApplies);
     }
 
     [Fact]
@@ -215,7 +436,7 @@ public sealed class IncomePlanningTests
         Assert.False(plan.HasUniformMonthlyTableReference);
 
         plan.Entries[0].End = new Date2026(12, 31);
-        plan.Entries[0].CustomWithholdingPercent = 31;
+        plan.Entries[0].AdditionalWithholdingPerPayment = 1_000;
         Assert.False(plan.HasUniformMonthlyTableReference);
     }
 

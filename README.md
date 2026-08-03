@@ -15,7 +15,7 @@ The application supports annual plans made from multiple income rows:
 - one-time salary and termination payments,
 - annual or date-prorated occupational pension,
 - own-company dividends within the entered gränsbelopp,
-- main-payer, secondary-payer, jämkning, and custom withholding,
+- main-payer, secondary-payer, jämkning, actual withholding, and voluntary extra withholding in SEK per payment,
 - vacation compensation, occupational-pension estimates, and salary exchange,
 - mixed salary/pension annual tax, calculated withholding, and reconciliation,
 - 2026 PGI and estimated SGI ceiling progress.
