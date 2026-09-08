@@ -27,6 +27,8 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               for key in ('revision', 'rust_toolchain', 'target', 'dotnet_sdk'):
                   output.write(key + '=' + pin[key] + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as environment:
+              environment.write('RUSTUP_TOOLCHAIN=' + pin['rust_toolchain'] + '\n')
           PY
       - uses: actions/checkout@v7
         with:
@@ -50,8 +52,6 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Build pinned Rust C ABI and verify generated declarations and fixtures
         run: python3 scripts/build-native-engine.py --source .rust-provider
-        env:
-          RUSTUP_TOOLCHAIN: ${{ steps.engine.outputs.rust_toolchain }}
       - name: Rust C ABI and reference contract tests
         run: cargo test --manifest-path .rust-provider/Cargo.toml -p swedish-tax-ios -p xtask --locked
       - run: dotnet restore SwedishTax.slnx

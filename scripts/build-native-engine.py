@@ -19,7 +19,10 @@ def main():
     args = parser.parse_args()
     source = args.source.resolve()
     pin = json.loads((ROOT / "native-engine.json").read_text())
-    rustc = subprocess.check_output(["rustc", "--version"], text=True).strip()
+    env = os.environ.copy()
+    # Keep the selected toolchain when entering the provider workspace.
+    env.setdefault("RUSTUP_TOOLCHAIN", pin["rust_toolchain"])
+    rustc = subprocess.check_output(["rustc", "--version"], env=env, text=True).strip()
     if not rustc.startswith("rustc " + pin["rust_toolchain"] + " "):
         raise SystemExit("Select RUSTUP_TOOLCHAIN=" + pin["rust_toolchain"])
     revision = subprocess.check_output(["git", "-C", source, "rev-parse", "HEAD"], text=True).strip()
@@ -36,7 +39,6 @@ def main():
     artifacts = ROOT / "artifacts"
     native = artifacts / "native"
     native.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
     for key in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "RUSTC_BOOTSTRAP"):
         env.pop(key, None)
     env["CARGO_TARGET_DIR"] = str(artifacts / "host")

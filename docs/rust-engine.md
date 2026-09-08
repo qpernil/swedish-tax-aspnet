@@ -82,7 +82,13 @@ There are no old-schema migrations.
 ## Build and provider updates
 
 `native-engine.json` pins the provider commit, Rust compiler, target, SDK and
-Rust flags. The build verifies a clean provider, generated declarations, and
+Rust flags. The build script selects the pinned Rust toolchain by default and
+passes it through to Cargo when entering the provider workspace. An explicit
+`RUSTUP_TOOLCHAIN` is accepted only if its compiler matches the pinned version;
+that installation must include `rust-src` and the target. CI uses the pin for
+every Rust build, including the ABI harness.
+
+The build verifies a clean provider, generated declarations, and
 all shared fixtures before building the host test library and invoking the
 provider's `cargo xtask wasm --release` for the WebAssembly static archive.
 The script passes the pinned Rust flags and uses `artifacts/rust` for target builds,
