@@ -128,6 +128,6 @@ declarations. The application uses
 
 The production architecture is documented in
 [the engine guide](../../docs/rust-engine.md). The harness build
-invokes `scripts/build-native-engine.py` and links the same static archive as
-the application. That script requires a clean provider at the pinned revision
+invokes `scripts/build-native-engine.py`, which calls the provider's
+`cargo xtask wasm` and supplies the same static archive used by the application. That script requires a clean provider at the pinned revision
 and checks the production declarations and shared fixtures as well.

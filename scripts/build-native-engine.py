@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the pinned shared iOS C interface for Blazor and native test execution."""
+"""Verify the provider and build its shared C interface for Blazor and native tests."""
 import argparse
 import json
 import os
@@ -31,6 +31,8 @@ def main():
     checked = ROOT / "tests/fixtures"
     if {p.name: p.read_bytes() for p in fixtures.glob("*.json")} != {p.name: p.read_bytes() for p in checked.glob("*.json")}:
         raise SystemExit("Shared Rust fixture drift; review and synchronize consumer tests/fixtures from provider tests/fixtures")
+    if pin["target"] != "wasm32-unknown-emscripten":
+        raise SystemExit("cargo xtask wasm requires the wasm32-unknown-emscripten target")
     artifacts = ROOT / "artifacts"
     native = artifacts / "native"
     native.mkdir(parents=True, exist_ok=True)
@@ -41,12 +43,12 @@ def main():
     run(["cargo", "rustc", "--manifest-path", source / "Cargo.toml", "-p", "swedish-tax-ios", "--release", "--locked", "--crate-type", "cdylib"], env=env)
     suffix = "dylib" if sys.platform == "darwin" else "so"
     shutil.copyfile(artifacts / f"host/release/libswedish_tax_ios.{suffix}", native / f"libswedish_tax_ios.{suffix}")
-    env["CARGO_TARGET_DIR"] = str(artifacts / "rust")
-    env["RUSTC_BOOTSTRAP"] = "1"
-    env["RUSTFLAGS"] = pin["rustflags"]
-    run(["cargo", "build", "--manifest-path", source / "Cargo.toml", "-p", "swedish-tax-ios", "--target", pin["target"],
-         "--release", "--locked", "-Z", "build-std=std,panic_abort"], env=env)
-    shutil.copyfile(artifacts / f"rust/{pin['target']}/release/libswedish_tax_ios.a", native / "libswedish_tax_ios.a")
+    env["CARGO_TARGET_DIR"] = str(artifacts / "xtask")
+    run(["cargo", "xtask", "wasm", "--release", "--target-dir", artifacts / "rust",
+         "--output", native, "--rustflags", pin["rustflags"]], cwd=source, env=env)
+    if subprocess.check_output(["git", "-C", source, "rev-parse", "HEAD"], text=True).strip() != revision \
+            or subprocess.check_output(["git", "-C", source, "status", "--porcelain"], text=True).strip():
+        raise SystemExit("Rust source changed during the build; review and commit the provider before rebuilding")
     (native / "build-info.json").write_text(json.dumps({**pin, "revision": revision, "rustc": rustc}, indent=2) + "\n")
     print(f"Built current C ABI at {revision}")
 

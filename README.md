@@ -72,7 +72,10 @@ compatibility, supported tooling and the provider-update workflow.
 Use .NET SDK 10.0.301 with its `wasm-tools` workload and Rust 1.98.1. The build
 requires a clean `swedish-tax` checkout at the revision in `native-engine.json`;
 the default location is adjacent to this repository. Generated libraries live
-in ignored `artifacts/` directories.
+in ignored `artifacts/` directories. `scripts/build-native-engine.py` verifies
+the pin, declarations and fixture copies, builds the host test library, and invokes
+the provider's `cargo xtask wasm` to compile the WebAssembly C library.
+`dotnet build`/`publish` link that library into the browser runtime.
 
 ```sh
 rustup toolchain install 1.98.1 --component rust-src --target wasm32-unknown-emscripten

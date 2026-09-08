@@ -83,8 +83,11 @@ There are no old-schema migrations.
 
 `native-engine.json` pins the provider commit, Rust compiler, target, SDK and
 Rust flags. The build verifies a clean provider, generated declarations, and
-all shared fixtures before building the host test library and WebAssembly
-static archive. `artifacts/native/build-info.json` records the actual commit
+all shared fixtures before building the host test library and invoking the
+provider's `cargo xtask wasm --release` for the WebAssembly static archive.
+The script passes the pinned Rust flags and uses `artifacts/rust` for target builds,
+`artifacts/xtask` for the native build tool, and `artifacts/native` for the library
+and shared header. .NET owns the final runtime link and application publication. `artifacts/native/build-info.json` records the actual commit
 and compiler. Binary artifacts are not committed. A rewritten provider history
 requires updating the pinned SHA even if its source tree is identical.
 
@@ -115,8 +118,10 @@ separate test project because those probes and fixtures do not ship in the UI.
 Rust and its standard library use `target-cpu=mvp` with `bulk-memory-opt` and
 `call-indirect-overlong` disabled because the pinned .NET optimizer cannot read
 those newer LLVM feature labels. Rust warns that these flags are unstable.
-Rebuilding the standard library requires Cargo `-Z build-std=std,panic_abort`
-and command-scoped `RUSTC_BOOTSTRAP=1`. Toolchain upgrades require full parity
+The provider's wasm task rebuilds the standard library with Cargo
+`-Z build-std=std,panic_abort` and command-scoped `RUSTC_BOOTSTRAP=1`.
+Its default flags match this configuration; the consumer explicitly passes the
+flags from `native-engine.json` to keep the selected build reproducible. Toolchain upgrades require full parity
 and browser verification; this is not a claim of arbitrary compiler compatibility.
 
 `panic=abort` means an unexpected Rust panic terminates execution rather than
