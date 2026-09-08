@@ -1,5 +1,8 @@
-﻿@page "/"
+@page "/"
 @using System.Globalization
+@implements IHandleEvent
+@implements IDisposable
+@inject IRustTaxEngine Engine
 
 <PageTitle>Swedish Tax 2026</PageTitle>
 
@@ -12,13 +15,28 @@
         <span class="year-label">Income year 2026</span>
     </header>
 
+    <p class="section-copy" role="status">@statusText</p>
+    @if (engineError is not null)
+    {
+        <p class="invalid-plan" role="alert">@engineError</p>
+        <button type="button" @onclick="RetryAsync">Retry engine</button>
+    }
+    @if (storageWarning is not null)
+    {
+        <p class="invalid-plan" role="alert">@storageWarning</p>
+        @if (!canSave)
+        {
+            <button type="button" @onclick="UseCurrentWorkspace">Replace saved workspace with this plan</button>
+        }
+    }
+    <fieldset class="workspace-controls" disabled="@(!initialized)">
     <section class="input-panel" aria-labelledby="inputs-heading">
         <h2 id="inputs-heading">Inputs</h2>
         <div class="controls plan-controls">
             <div class="control compact-control selector-help-control">
                 <div class="control-heading"><label for="tax-table">Tax table</label></div>
                 <select id="tax-table" aria-describedby="tax-table-help" @bind="table">
-                    @for (var option = TaxCalculator.MinTaxTable; option <= TaxCalculator.MaxTaxTable; option++)
+                    @for (var option = 29; option <= 42; option++)
                     {
                         <option value="@option">@option</option>
                     }
@@ -39,10 +57,10 @@
             </label>
 
             <div class="control income-plan-control">
-                <span>@(Plan.HasUniformMonthlyTableReference ? "Monthly income" : "Annual income plan")</span>
+                <span>@((result?.HasUniformMonthlyTableReference ?? false) ? "Monthly income" : "Annual income plan")</span>
                 <button type="button" class="plan-button" @onclick="() => editorOpen = !editorOpen" aria-expanded="@editorOpen">
-                    <strong>@FormatSek(Plan.HasUniformMonthlyTableReference ? Plan.Totals.MonthlyTaxableIncome : Plan.Totals.GrossIncome)</strong>
-                    <small>@(Plan.HasUniformMonthlyTableReference ? "/ month" : "/ year") · Edit…</small>
+                    <strong>@FormatSek((result?.HasUniformMonthlyTableReference ?? false) ? (result?.Totals.MonthlyTaxableIncome ?? 0) : (result?.Totals.GrossIncome ?? 0))</strong>
+                    <small>@((result?.HasUniformMonthlyTableReference ?? false) ? "/ month" : "/ year") · Edit…</small>
                 </button>
             </div>
         </div>
@@ -86,7 +104,8 @@
                                        Entry="entry"
                                        HasAdjustment="@HasAdjustment"
                                        Withholding="estimate"
-                                       Allowance="Plan.GetSalaryExchangeAllowance(entry.Id)"
+                                       Allowance="entry.Result?.Allowance"
+                                       OnChange="RowChanged"
                                        OnRemove="RemoveEntry" />
                 }
             </div>
@@ -103,12 +122,12 @@
         </section>
     }
 
-    @if (Calculation is { } calculation)
+    @if (result?.Calculation is { } calculation)
     {
         <section class="results" aria-labelledby="result-heading">
             <div class="section-heading result-heading">
                 <h2 id="result-heading">Tax result</h2>
-                <span>Table @table / salary column @((byte)ageGroup.SalaryColumn()) / pension column @((byte)ageGroup.PensionColumn())</span>
+                <span>Table @table / salary column @((byte)(result?.SalaryColumn ?? 1)) / pension column @((byte)(result?.PensionColumn ?? 6))</span>
             </div>
 
             <div class="summary-grid">
@@ -144,7 +163,12 @@
                     }
                     @if (calculation.Totals.TotalEmployerPensionContributions > 0)
                     {
-                        <div><dt>Employer pension contributions</dt><dd>@FormatSek(calculation.Totals.TotalEmployerPensionContributions)</dd></div>
+                        <div><dt>Modeled employer pension contributions</dt><dd>@FormatSek(calculation.Totals.TotalEmployerPensionContributions)</dd></div>
+                        <div><dt>Regular pension contributions</dt><dd>@FormatSek(calculation.RegularPensionPremiums)</dd></div>
+                        <div><dt>Vacation pension contributions</dt><dd>@FormatSek(calculation.VacationPensionPremiums)</dd></div>
+                        <div><dt>Salary exchange pension contributions</dt><dd>@FormatSek(calculation.SalaryExchangePensionContributions)</dd></div>
+                        <div><dt>Current-year pensionable salary basis</dt><dd>@FormatSek(calculation.PensionSalaryBasis)</dd></div>
+                        <div><dt>Modeled pension share of current-year basis</dt><dd>@calculation.EmployerPensionShareOfBasis.ToString("F2")%</dd></div>
                     }
                     <div><dt>Effective final tax rate</dt><dd>@calculation.EffectiveRate.ToString("F2", CultureInfo.InvariantCulture)%</dd></div>
                     <div><dt>Calculated tax withheld</dt><dd>@FormatSek(calculation.WithheldTax)</dd></div>
@@ -184,6 +208,15 @@
                     }
                     <div class="total-row"><dt>Total withheld</dt><dd>@FormatSek(calculation.WithheldTax)</dd></div>
                 </dl>
+                @if (calculation.AdjustmentBalanceTrace is { } balanceTrace)
+                {
+                    <h3>Jämkning balance trace</h3>
+                    <dl class="value-list">
+                        <div><dt>Formula tax change from decision basis</dt><dd>@FormatSignedSek(balanceTrace.FormulaTaxChange)</dd></div>
+                        <div><dt>Withholding change from decision basis</dt><dd>@FormatSignedSek(balanceTrace.WithholdingChange)</dd></div>
+                        <div><dt>Ordinary-income balance</dt><dd>@FormatSignedSek(balanceTrace.OrdinaryBalance)</dd></div>
+                    </dl>
+                }
                 <h3>3. Annual formula and balance</h3>
                 <p class="trace-equation">
                     @FormatSek(calculation.AnnualTax.Total) ordinary formula tax
@@ -205,7 +238,7 @@
                 <p class="section-copy">Reference only: annual taxable salary and pension divided by 12, then looked up as salary in the selected table. Actual payer withholding is calculated separately above.</p>
                 <dl class="value-list comparison-list">
                     <div><dt>Average monthly taxable income</dt><dd>@FormatSek(calculation.MonthlyIncome)</dd></div>
-                    <div><dt>Table @table, salary column @((byte)ageGroup.SalaryColumn())</dt><dd>@FormatDeduction(calculation.TableDeduction)</dd></div>
+                    <div><dt>Table @table, salary column @((byte)(result?.SalaryColumn ?? 1))</dt><dd>@FormatDeduction(calculation.TableDeduction)</dd></div>
                     <div><dt>Annualized table deduction (12 months)</dt><dd>@FormatSek(calculation.AnnualizedTableReferenceTax)</dd></div>
                     <div><dt>Cash after table deduction</dt><dd>@FormatSek(calculation.TableReferenceNet)</dd></div>
                 </dl>
@@ -232,8 +265,11 @@
                     <div><dt>General pension fee</dt><dd>@FormatSek(calculation.AnnualTax.PensionFee)</dd></div>
                     <div><dt>General pension fee credit</dt><dd>@FormatCredit(calculation.AnnualTax.PensionFeeCredit)</dd></div>
                     <div><dt>Work income credit</dt><dd>@FormatCredit(calculation.AnnualTax.WorkIncomeCredit)</dd></div>
+                    <div><dt>Sickness compensation credit</dt><dd>@FormatCredit(calculation.AnnualTax.SicknessCompensationCredit)</dd></div>
                     <div><dt>Earned income credit</dt><dd>@FormatCredit(calculation.AnnualTax.EarnedIncomeCredit)</dd></div>
                     <div><dt>Public service fee</dt><dd>@FormatSek(calculation.AnnualTax.PublicServiceFee)</dd></div>
+                    <div><dt>Total tax and fees before credits</dt><dd>@FormatSek(calculation.AnnualTax.AdditionsTotal)</dd></div>
+                    <div><dt>Total credits</dt><dd>@FormatCredit(calculation.AnnualTax.CreditsTotal)</dd></div>
                     <div class="total-row"><dt>Formula annual tax</dt><dd>@FormatSek(calculation.AnnualTax.Total)</dd></div>
                 </dl>
                 @if (calculation.AdjustmentCalibration is { } adjustment)
@@ -252,7 +288,7 @@
                     <h3 class="subheading">Dividend</h3>
                     <dl class="value-list comparison-list">
                         <div><dt>Own-AB dividend</dt><dd>@FormatSek(calculation.Totals.DividendIncome)</dd></div>
-                        <div><dt>Dividend tax at @TaxProjection.OwnCompanyDividendTaxPercent%</dt><dd>@FormatSek(calculation.DividendTax)</dd></div>
+                        <div><dt>Dividend tax at 20%</dt><dd>@FormatSek(calculation.DividendTax)</dd></div>
                         <div class="total-row"><dt>Total final tax</dt><dd>@FormatSek(calculation.TotalTax)</dd></div>
                     </dl>
                 }
@@ -261,40 +297,80 @@
     }
     else
     {
-        <p class="invalid-plan">Correct the date range in the income plan to calculate tax.</p>
+        @if (issue is not null)
+        {
+            <p class="invalid-plan" role="alert">@IssueText(issue)</p>
+        }
     }
 
     <section class="data-section dividend-allowance-section">
         <details>
             <summary><strong>Preliminary 2027 dividend allowance</strong></summary>
-            <div class="option-grid">
-                <label class="check-field">
-                    <input type="checkbox" @bind="Plan.DividendAllowance.OnePersonCompany" />
-                    <span>One-person company — marked salary is total payroll</span>
-                </label>
-                <label><span>Your ownership</span><input type="number" min="0" max="100" step="0.01" @bind="OwnershipPercentText" /><small>%</small></label>
-                <label><span>Spouse ownership</span><input type="number" min="0" max="100" step="0.01" @bind="SpouseOwnershipPercentText" /><small>%</small></label>
-                <label><span>Ownership in other qualified companies</span><input type="number" min="0" max="10000" step="0.01" @bind="OtherOwnershipPercentText" /><small>%</small></label>
-                @if (!Plan.DividendAllowance.OnePersonCompany)
-                {
-                    <label><span>Company/group payroll in 2026</span><input type="number" min="0" @bind="Plan.DividendAllowance.CompanyCashPayroll2026" /><small>SEK</small></label>
-                    <label><span>Highest related person's salary</span><input type="number" min="0" @bind="Plan.DividendAllowance.HighestRelatedCashSalary2026" /><small>SEK</small></label>
-                }
-                <label><span>Acquisition cost</span><input type="number" min="0" @bind="Plan.DividendAllowance.AcquisitionCost" /><small>SEK</small></label>
-                <label><span>Saved allowance</span><input type="number" min="0" @bind="Plan.DividendAllowance.SavedAllowance" /><small>SEK</small></label>
+            <div class="dividend-form">
+                <fieldset class="dividend-group">
+                    <legend>Ownership</legend>
+                    <div class="dividend-fields ownership-fields">
+                        <label class="dividend-field"><span>Your ownership</span><span class="dividend-input"><input type="number" min="0" max="100" step="0.01" @bind="OwnershipPercentText" /><span aria-hidden="true">%</span></span></label>
+                        <label class="dividend-field"><span>Spouse ownership</span><span class="dividend-input"><input type="number" min="0" max="100" step="0.01" @bind="SpouseOwnershipPercentText" /><span aria-hidden="true">%</span></span></label>
+                        <label class="dividend-field"><span>Ownership in other qualified companies</span><span class="dividend-input"><input type="number" min="0" max="10000" step="0.01" @bind="OtherOwnershipPercentText" /><span aria-hidden="true">%</span></span></label>
+                    </div>
+                </fieldset>
+                <fieldset class="dividend-group">
+                    <legend>Salary and payroll · 2026</legend>
+                    <label class="check-field dividend-toggle">
+                        <input type="checkbox" @bind="Plan.DividendAllowance.OnePersonCompany" />
+                        <span>One-person company — marked salary is total payroll</span>
+                    </label>
+                    @if (!Plan.DividendAllowance.OnePersonCompany)
+                    {
+                        <div class="dividend-fields">
+                            <label class="dividend-field"><span>Company/group payroll in 2026</span><span class="dividend-input"><input type="number" min="0" @bind="Plan.DividendAllowance.CompanyCashPayroll2026" /><span aria-hidden="true">SEK</span></span></label>
+                            <label class="dividend-field"><span>Highest related person's salary</span><span class="dividend-input"><input type="number" min="0" @bind="Plan.DividendAllowance.HighestRelatedCashSalary2026" /><span aria-hidden="true">SEK</span></span></label>
+                        </div>
+                    }
+                </fieldset>
+                <fieldset class="dividend-group">
+                    <legend>Acquisition cost and saved allowance</legend>
+                    <div class="dividend-fields">
+                        <label class="dividend-field"><span>Acquisition cost</span><span class="dividend-input"><input type="number" min="0" @bind="Plan.DividendAllowance.AcquisitionCost" /><span aria-hidden="true">SEK</span></span></label>
+                        <label class="dividend-field"><span>Saved allowance</span><span class="dividend-input"><input type="number" min="0" @bind="Plan.DividendAllowance.SavedAllowance" /><span aria-hidden="true">SEK</span></span></label>
+                    </div>
+                    <label class="check-field dividend-toggle interest-toggle">
+                        <input type="checkbox" @bind="HasAcquisitionInterestRate" />
+                        <span>Enter a 2027 acquisition-cost interest rate</span>
+                    </label>
+                    @if (HasAcquisitionInterestRate)
+                    {
+                        <div class="dividend-fields">
+                            <div>
+                                <label class="dividend-field"><span>Total acquisition-cost interest rate</span><span class="dividend-input"><input type="number" min="0" max="100" step="0.01" @bind="AcquisitionInterestPercentText" /><span aria-hidden="true">%</span></span></label>
+                                <p class="dividend-hint">Government borrowing rate plus 9 percentage points.</p>
+                            </div>
+                        </div>
+                    }
+                </fieldset>
             </div>
-            @if (DividendAllowance.Allowance is { } allowance)
+            @if (result?.Dividend.Allowance is { } allowance)
             {
                 <dl class="value-list comparison-list">
                     <div class="total-row"><dt>Maximum dividend at 20%</dt><dd>@FormatSek(allowance.Total)</dd></div>
                     <div><dt>Basic amount</dt><dd>@FormatSek(allowance.BasicAmount)</dd></div>
+                    <div><dt>Company/group cash payroll</dt><dd>@FormatSek(allowance.CompanyCashPayroll)</dd></div>
+                    <div><dt>Joint wage basis</dt><dd>@FormatSek(allowance.JointWageBasis)</dd></div>
+                    <div><dt>Joint wage basis after deduction</dt><dd>@FormatSek(allowance.JointWageBasisAfterDeduction)</dd></div>
+                    <div><dt>Your wage allowance before cap</dt><dd>@FormatSek(allowance.WageAllowanceBeforeCap)</dd></div>
+                    <div><dt>Salary used for wage cap</dt><dd>@FormatSek(allowance.WageCapSalary)</dd></div>
+                    <div><dt>50-times-salary cap</dt><dd>@FormatSek(allowance.WageCap)</dd></div>
+                    <div><dt>Acquisition-cost interest basis</dt><dd>@FormatSek(allowance.AcquisitionCostInterestBasis)</dd></div>
+                    <div><dt>Acquisition-cost interest</dt><dd>@FormatSek(allowance.AcquisitionCostInterest)</dd></div>
+                    <div><dt>Saved allowance</dt><dd>@FormatSek(allowance.SavedAllowance)</dd></div>
                     <div><dt>Wage-based allowance</dt><dd>@FormatSek(allowance.WageAllowance)</dd></div>
                     <div><dt>Personal tax if fully used</dt><dd>@FormatSek(allowance.TaxAtTwentyPercent)</dd></div>
                     <div class="total-row"><dt>Net after 20% tax</dt><dd>@FormatSek(allowance.NetAfterTwentyPercentTax)</dd></div>
                     <div><dt>Marked 2026 own-company salary</dt><dd>@FormatSek(allowance.OwnerCashSalary)</dd></div>
                 </dl>
             }
-            else if (DividendAllowance.Issue is { } issue)
+            else if (result?.Dividend.Issue is { } issue)
             {
                 <p class="invalid-plan">@DividendAllowanceIssueText(issue)</p>
             }
@@ -302,25 +378,143 @@
         </details>
     </section>
 
+    </fieldset>
     <footer class="page-footer">
         Preliminary estimate based on Skatteverket tables and SKV 433, edition 36. Dividend tax assumes the amount is within the applicable gränsbelopp. Försäkringskassan determines actual SGI.
     </footer>
 </main>
 
 @code {
+    private PlanResult? result;
+    private EngineIssue? issue;
+    private string statusText = "Loading the calculator…";
+    private string? engineError;
+    private string? storageWarning;
+    private bool initialized;
+    private bool canSave = true;
+    private bool disposed;
+    private readonly CalculationRevision revisions = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await InitializeAsync();
+    }
+
+    private async Task InitializeAsync()
+    {
+        try
+        {
+            var saved = await Engine.LoadWorkspaceAsync();
+            if (saved is not null)
+            {
+                try
+                {
+                    var workspace = SavedWorkspace.Restore(saved);
+                    table = workspace.Table;
+                    ageGroup = workspace.AgeGroup;
+                    Plan = workspace.Plan;
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    canSave = false;
+                    storageWarning = "The saved plan could not be restored. It has been preserved; edits will not overwrite it until you choose to replace it.";
+                }
+            }
+        }
+        catch (JSException)
+        {
+            canSave = false;
+            storageWarning = "The saved plan could not be read. It has been preserved; edits will not overwrite it until you choose to replace it.";
+        }
+        initialized = true;
+        await RecalculateAsync();
+    }
+
+    private Task RetryAsync() => initialized ? RecalculateAsync() : InitializeAsync();
+    private void UseCurrentWorkspace() { canSave = true; storageWarning = null; }
+    private void RowChanged() { }
+
+    async Task IHandleEvent.HandleEventAsync(EventCallbackWorkItem callback, object? arg)
+    {
+        await callback.InvokeAsync(arg);
+        if (initialized && !disposed) await RecalculateAsync();
+        else StateHasChanged();
+    }
+
+    private async Task RecalculateAsync()
+    {
+        var revision = revisions.Next();
+        result = null;
+        issue = null;
+        engineError = null;
+        foreach (var entry in Plan.Entries) entry.Result = null;
+        statusText = "Calculating locally…";
+        StateHasChanged();
+        // Capture the complete edited workspace before yielding. No financial inputs leave the browser.
+        var saved = new SavedWorkspace(table, ageGroup, Plan).Serialize();
+        if (canSave)
+        {
+            try { await Engine.SaveWorkspaceAsync(saved); }
+            catch (JSException) { storageWarning = "This browser cannot save the plan. Keep this page open to retain your edits."; }
+        }
+        await Task.Delay(120);
+        if (!revisions.IsCurrent(revision) || disposed) return;
+        try
+        {
+            var response = await Engine.CalculateAsync(table, ageGroup, Plan);
+            if (!revisions.IsCurrent(revision) || disposed) return;
+            result = response.Result;
+            issue = response.Issue;
+            foreach (var entry in Plan.Entries)
+                entry.Result = result?.Entries.FirstOrDefault(e => e.EntryId == entry.Id);
+            statusText = "Calculated locally on this device. Your plan stays in this browser.";
+        }
+        catch (Exception ex) when (ex is SwedishTax.Native.TaxEngineException)
+        {
+            if (!revisions.IsCurrent(revision) || disposed) return;
+            engineError = "The Rust engine could not calculate this plan. Retry, or reload the application. " + ex.Message;
+            statusText = "Calculation unavailable.";
+        }
+        StateHasChanged();
+    }
+
+    private string IssueText(EngineIssue value)
+    {
+        var name = Plan.Entries.FirstOrDefault(e => e.Id == value.EntryId);
+        var label = name is null ? "Income row" : EntryName(name);
+        return value.Kind switch
+        {
+            EngineIssueKind.InvalidPaymentPeriod => $"{label}: the last payment day must be on or after the first day.",
+            EngineIssueKind.SalaryExchangeExceedsAllowance => $"{label}: salary exchange exceeds the allowance. The maximum is {FormatSek(value.Maximum ?? 0)}. Update the exchanged salary to calculate tax.",
+            EngineIssueKind.UnsupportedTaxTable => "Select a supported tax table (29–42).",
+            _ => "The plan contains invalid input. Check its values before calculating.",
+        };
+    }
+
+    public void Dispose() { disposed = true; revisions.Next(); }
+
     private static readonly NumberFormatInfo SekFormat = new() { NumberDecimalDigits = 0, NumberGroupSeparator = " " };
     private byte table = 32;
     private TaxAgeGroup ageGroup = TaxAgeGroup.Under66AtYearStart;
-    private readonly IncomePlan Plan = IncomePlan.WithMonthlySalary(660_400 / 12);
+    private IncomePlan Plan = IncomePlan.WithMonthlySalary(660_400 / 12);
     private IncomeKind newIncomeKind = IncomeKind.AnnualSalary;
     private bool editorOpen;
 
-    private WithholdingSummary CurrentWithholding => Plan.EstimateWithholding(table, ageGroup);
+    private WithholdingSummary CurrentWithholding => result?.Withholding ?? new(0, []);
     private bool HasAdjustment { get => Plan.AdjustmentPercent.HasValue; set => Plan.SetAdjustmentEnabled(value); }
     private uint AdjustmentPercent { get => Plan.AdjustmentPercent ?? 0; set => Plan.AdjustmentPercent = Math.Min(value, 100); }
 
-    private TaxProjection? Calculation => TaxProjection.Calculate(table, ageGroup, Plan);
-    private DividendAllowanceResult DividendAllowance => Plan.CalculateDividendAllowance2027();
+
+    private bool HasAcquisitionInterestRate
+    {
+        get => Plan.DividendAllowance.AcquisitionCostInterestBasisPoints.HasValue;
+        set => Plan.DividendAllowance.AcquisitionCostInterestBasisPoints = value ? 0U : null;
+    }
+    private string AcquisitionInterestPercentText
+    {
+        get => PercentageText.FormatBasisPoints(Plan.DividendAllowance.AcquisitionCostInterestBasisPoints ?? 0);
+        set { if (PercentageText.TryParseBasisPoints(value, 10_000, out var rate)) Plan.DividendAllowance.AcquisitionCostInterestBasisPoints = rate; }
+    }
     private string OwnershipPercentText
     {
         get => PercentageText.FormatBasisPoints(Plan.DividendAllowance.OwnershipBasisPoints);
@@ -391,13 +585,13 @@
         {
             builder.OpenElement(sequence++, "progress");
             builder.AddAttribute(sequence++, "max", 100);
-            builder.AddAttribute(sequence++, "value", estimate.Progress.PercentOfMaximum);
+            builder.AddAttribute(sequence++, "value", estimate.Progress!.PercentOfMaximum);
             builder.CloseElement();
             builder.OpenElement(sequence++, "span");
-            builder.AddContent(sequence++, $"{estimate.Progress.PercentOfMaximum:F1}% of 2026 maximum");
+            builder.AddContent(sequence++, $"{estimate.Progress!.PercentOfMaximum:F1}% of 2026 maximum");
             builder.CloseElement();
             builder.OpenElement(sequence++, "small");
-            builder.AddContent(sequence++, $"{FormatSek(estimate.Progress.EstimatedBasis)} / {FormatSek(estimate.Progress.MaximumBasis)}");
+            builder.AddContent(sequence++, $"{FormatSek(estimate.Progress!.EstimatedBasis)} / {FormatSek(estimate.Progress!.MaximumBasis)}");
             builder.CloseElement();
         }
         builder.CloseElement();

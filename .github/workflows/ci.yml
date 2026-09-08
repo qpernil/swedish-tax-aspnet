@@ -3,28 +3,133 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Install .NET 10
-        uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@v7
+      - name: Read native engine pin
+        id: engine
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          pin = json.load(open('native-engine.json'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for key in ('revision', 'rust_toolchain', 'target', 'dotnet_sdk'):
+                  output.write(key + '=' + pin[key] + '\n')
+          PY
+      - uses: actions/checkout@v7
         with:
-          dotnet-version: 10.0.x
+          repository: qpernil/swedish-tax
+          ref: ${{ steps.engine.outputs.revision }}
+          path: .rust-provider
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.engine.outputs.rust_toolchain }}
+          targets: ${{ steps.engine.outputs.target }}
+          components: rust-src
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ steps.engine.outputs.dotnet_sdk }}
+      - run: dotnet workload install wasm-tools --skip-manifest-update
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Build pinned Rust C ABI and verify generated declarations and fixtures
+        run: python3 scripts/build-native-engine.py --source .rust-provider
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.engine.outputs.rust_toolchain }}
+      - name: Rust C ABI and reference contract tests
+        run: cargo test --manifest-path .rust-provider/Cargo.toml -p swedish-tax-ios -p xtask --locked
+      - run: dotnet restore SwedishTax.slnx
+      - run: dotnet build SwedishTax.slnx --configuration Release --no-restore
+      - run: dotnet test SwedishTax.slnx --configuration Release --no-build
+      - run: dotnet publish src/SwedishTax.Web/SwedishTax.Web -c Release -o /tmp/swedish-tax-publish
+      - name: Published calculator in all three browser engines
+        shell: bash
+        run: |
+          cd /tmp/swedish-tax-publish
+          dotnet SwedishTax.Web.dll --urls http://127.0.0.1:5181 > /tmp/tax-app.log 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid"; cat /tmp/tax-app.log' EXIT
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:5181/ > /dev/null; then break; fi
+            sleep 1
+          done
+          cd "$GITHUB_WORKSPACE"
+          for engine in chromium firefox webkit; do PLAYWRIGHT_BROWSER="$engine" pnpm test:browser; done
+      - name: Build ABI layout and native parity harness
+        run: python3 tests/RustPInvoke/build.py --rust-source .rust-provider --output /tmp/ffi-harness
+      - name: Verify all C exports, layouts, and ownership in browsers
+        shell: bash
+        run: |
+          python3 -m http.server 5182 --bind 127.0.0.1 --directory /tmp/ffi-harness/wwwroot > /tmp/tax-ffi.log 2>&1 &
+          ffi_pid=$!
+          trap 'kill "$ffi_pid"; cat /tmp/tax-ffi.log' EXIT
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:5182/ > /dev/null; then break; fi
+            sleep 1
+          done
+          for engine in chromium firefox webkit; do PLAYWRIGHT_BROWSER="$engine" node tests/RustPInvoke/smoke.cjs; done
+      - name: Publish static Pages artifact
+        run: python3 scripts/publish-pages.py --base-path "/${{ github.event.repository.name }}/" --output artifacts/pages
+      - name: Test the Pages artifact under its repository path
+        shell: bash
+        run: |
+          preview_root=$(mktemp -d)
+          ln -s "$GITHUB_WORKSPACE/artifacts/pages" "$preview_root/${{ github.event.repository.name }}"
+          python3 -m http.server 5183 --bind 127.0.0.1 --directory "$preview_root" > /tmp/tax-pages.log 2>&1 &
+          pages_pid=$!
+          trap 'kill "$pages_pid"; cat /tmp/tax-pages.log' EXIT
+          export TAX_APP_URL="http://127.0.0.1:5183/${{ github.event.repository.name }}/"
+          for attempt in {1..60}; do
+            if curl --fail --silent "$TAX_APP_URL" > /dev/null; then break; fi
+            sleep 1
+          done
+          for engine in chromium firefox webkit; do PLAYWRIGHT_BROWSER="$engine" pnpm test:browser; done
+      - name: Upload tested Pages artifact
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: artifacts/pages
+      - name: Preserve build provenance and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-engine-verification
+          path: |
+            artifacts/native/build-info.json
+            /tmp/ffi-harness/build-info.json
+            /tmp/tax-app.log
+            /tmp/tax-ffi.log
+            /tmp/tax-pages.log
 
-      - name: Restore dependencies
-        run: dotnet restore SwedishTax.slnx
-
-      - name: Build
-        run: dotnet build SwedishTax.slnx --configuration Release --no-restore
-
-      - name: Run tests
-        run: dotnet test SwedishTax.slnx --configuration Release --no-build
+  deploy:
+    name: Deploy calculator to GitHub Pages
+    needs: test
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Deploy tested artifact
+        id: deployment
+        uses: actions/deploy-pages@v4

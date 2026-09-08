@@ -1,0 +1,115 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { chromium, firefox, webkit } = require('playwright');
+const url = process.env.TAX_APP_URL || 'http://127.0.0.1:5181';
+const fixture = name => JSON.parse(fs.readFileSync(path.join(__dirname, '../fixtures', name + '.json'), 'utf8'));
+const sek = n => n.toLocaleString('en-US').replaceAll(',', ' ') + ' SEK';
+const workspace = request => JSON.stringify({table:request.table, age_group:request.age_group, plan:request.plan});
+(async () => {
+    const engine = process.env.PLAYWRIGHT_BROWSER || 'chromium';
+    const browser = await ({chromium,firefox,webkit})[engine].launch({headless:true, ...(engine === 'chromium' && process.env.PLAYWRIGHT_CHANNEL ? {channel:process.env.PLAYWRIGHT_CHANNEL} : {})});
+    try {
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        page.setDefaultTimeout(10000);
+        const errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        const ready = async () => page.getByRole('status').filter({hasText:'Calculated'}).waitFor();
+        const stable = async () => {
+            await page.waitForTimeout(350);
+            await ready();
+        };
+        const loaded = [];
+        page.on('request', r => loaded.push(r.url()));
+        await page.goto(url);
+        await ready();
+        assert.equal(loaded.some(u => /dotnet\.native.*\.wasm/.test(u)),true,'The linked .NET/Rust runtime must load');
+        assert.equal(loaded.some(u => /swedish_tax_web|bridge\.js|\/rust\//.test(u)),false,'No separate Rust engine module should load');
+        assert.equal(await page.locator('.formula-summary strong').innerText(), sek(fixture('simple').response.result.calculation.total_tax));
+        const requests = [];
+        page.on('request', r => requests.push({url:r.url(),method:r.method(),body:r.postData()}));
+        await context.setOffline(true);
+        await page.getByRole('button', {name:/Edit…/}).click();
+        await stable();
+        const salary = page.locator('.income-entry-card').first();
+        await salary.getByRole('spinbutton', {name:/^Monthly amount/}).fill('60000');
+        await stable();
+        assert.notEqual(await page.locator('.formula-summary strong').innerText(), sek(fixture('simple').response.result.calculation.total_tax));
+        await salary.getByRole('spinbutton', {name:/^Monthly amount/}).fill('61000');
+        await salary.getByRole('spinbutton', {name:/^Monthly amount/}).fill('62000');
+        await stable();
+        assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('swedish-tax.workspace'))).plan.entries[0].amount,62000);
+        await salary.getByText('Vacation payout and occupational pension', {exact:true}).click();
+        await salary.getByLabel('Add vacation compensation', {exact:true}).check();
+        await stable();
+        assert.equal(await salary.getByLabel('Daily share of monthly salary').inputValue(),'5.4');
+        await salary.getByLabel('Daily share of monthly salary').fill('6');
+        await salary.getByLabel('Daily share of monthly salary').blur();
+        await stable();
+        await salary.getByRole('combobox', {name:/Last day · month/}).selectOption('10');
+        await stable();
+        await salary.getByRole('combobox', {name:/Last day · day/}).selectOption('18');
+        await stable();
+        const before = await salary.locator('.entry-result').innerText();
+        await salary.getByLabel('Use monthly amount × 12 / 365 for partial months').check();
+        await stable();
+        assert.notEqual(await salary.locator('.entry-result').innerText(),before);
+        assert.equal(requests.length,0, 'Edits must not make network requests');
+        await context.setOffline(false);
+        await page.reload(); await ready();
+        await page.getByRole('button', {name:/Edit…/}).click(); await stable();
+        assert.equal(await salary.getByRole('spinbutton', {name:/^Monthly amount/}).inputValue(),'62000');
+        assert.equal(await salary.getByLabel('Use monthly amount × 12 / 365 for partial months').isChecked(),true);
+        // Restore every non-default field from the shared complete fixture.
+        const complete = fixture('complete');
+        await page.evaluate(v=>localStorage.setItem('swedish-tax.workspace',v),workspace(complete.request));
+        await page.reload(); await ready();
+        assert.equal(await page.locator('.formula-summary strong').innerText(),sek(complete.response.result.calculation.total_tax));
+        await page.getByRole('button', {name:/Edit…/}).click(); await stable();
+        const exchange = page.locator('.income-entry-card').nth(1);
+        await exchange.getByText('Salary exchange', {exact:true}).click();
+        assert.equal(await exchange.getByRole('spinbutton', {name:/^Preceding-year pensionable salary/}).inputValue(),'1116000');
+        assert.equal(await exchange.getByRole('spinbutton', {name:/^Confirmed costs before this exchange/}).inputValue(),'210000');
+        await page.getByText('Preliminary 2027 dividend allowance', {exact:true}).click();
+        assert.equal(await page.getByLabel('Total acquisition-cost interest rate').inputValue(),'11.55');
+        await exchange.getByLabel('Salary to exchange', {exact:true}).fill('500000');
+        await exchange.getByLabel('Salary to exchange', {exact:true}).blur(); await stable();
+        assert.equal(await page.locator('.formula-summary').count(),0);
+        assert.match(await page.getByRole('alert').innerText(),/maximum is/);
+        await exchange.getByLabel('Salary to exchange', {exact:true}).fill('100000');
+        await exchange.getByLabel('Salary to exchange', {exact:true}).blur(); await stable();
+        assert.equal(await page.locator('.formula-summary strong').innerText(),sek(complete.response.result.calculation.total_tax));
+        await page.setViewportSize({width:390,height:844});
+        await page.screenshot({path:process.env.TAX_SCREENSHOT || '/tmp/swedish-tax-mobile.png',fullPage:true});
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth > window.innerWidth),false,'Mobile layout must not overflow');
+        // Removing rows preserves stable identity and updates results immediately.
+        for (let i=0;i<3;i++) { await page.locator('.income-entry-card').last().getByRole('button',{name:'Remove',exact:true}).click(); await stable(); }
+        assert.equal(await page.locator('.income-entry-card').count(),1);
+        await salary.getByRole('button',{name:'Remove',exact:true}).click(); await stable();
+        assert.equal(await page.locator('.income-entry-card').count(),1);
+        assert.equal(await page.locator('.formula-summary strong').innerText(),'0 SEK');
+        // Preserve malformed saved workspaces until explicitly replaced.
+        const broken = '{"table":"invalid"}';
+        await page.evaluate(v=>localStorage.setItem('swedish-tax.workspace',v),broken);
+        await page.reload(); await ready();
+        assert.match(await page.getByRole('alert').innerText(),/preserved/);
+        assert.equal(await page.evaluate(()=>localStorage.getItem('swedish-tax.workspace')),broken);
+        await page.getByRole('button',{name:'Replace saved workspace with this plan'}).click(); await stable();
+        assert.equal(JSON.parse(await page.evaluate(()=>localStorage.getItem('swedish-tax.workspace'))).table,32);
+        assert.deepEqual(errors,[]);
+        await context.close();
+        // Storage failure must not disable calculation or overwrite unread input.
+        const unavailable = await browser.newContext();
+        await unavailable.addInitScript(() => {
+            Storage.prototype.getItem = function() { throw new Error('Storage unavailable'); };
+        });
+        const restricted = await unavailable.newPage();
+        await restricted.goto(url);
+        await restricted.getByRole('status').filter({hasText:'Calculated'}).waitFor();
+        assert.match(await restricted.getByRole('alert').innerText(),/could not be read.*preserved/);
+        assert.equal(await restricted.locator('.formula-summary strong').innerText(),sek(fixture('simple').response.result.calculation.total_tax));
+        await unavailable.close();
+        console.log(engine + ' PASS: published app, fixtures, offline edits, parent refresh, persistence, invalid exchange, mobile layout, stable removal, saved-state recovery, linked native runtime, storage failure');
+    } finally { await browser.close(); }
+})().catch(error=>{console.error(error);process.exit(1)});

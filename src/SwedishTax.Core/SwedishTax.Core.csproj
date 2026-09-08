@@ -7,8 +7,4 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="Data/allmanna-tabeller-manad-2026.txt" />
-  </ItemGroup>
-
 </Project>

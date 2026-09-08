@@ -3,3 +3,7 @@
 **/bin/
 **/obj/
 
+node_modules/
+artifacts/
+.rust-provider/
+__pycache__/

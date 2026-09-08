@@ -2,10 +2,15 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <WasmBuildNative>true</WasmBuildNative>
+    <RustLibraryPath>$(MSBuildThisFileDirectory)../../../artifacts/native/libswedish_tax_ios.a</RustLibraryPath>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
-    <StaticWebAssetProjectMode>Default</StaticWebAssetProjectMode>
+    <StaticWebAssetProjectMode Condition="'$(StaticSite)' != 'true'">Default</StaticWebAssetProjectMode>
+    <StaticWebAssetProjectMode Condition="'$(StaticSite)' == 'true'">Root</StaticWebAssetProjectMode>
+    <StaticWebAssetStandaloneHosting Condition="'$(StaticSite)' == 'true'">true</StaticWebAssetStandaloneHosting>
+    <DefineConstants Condition="'$(StaticSite)' == 'true'">$(DefineConstants);STATIC_SITE</DefineConstants>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
   </PropertyGroup>
 
@@ -15,6 +20,18 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\SwedishTax.Core\SwedishTax.Core.csproj" />
+    <ProjectReference Include="..\..\SwedishTax.Native\SwedishTax.Native.csproj" />
+    <NativeFileReference Include="$(RustLibraryPath)" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(StaticSite)' != 'true'">
+    <Content Remove="wwwroot/index.html" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(StaticSite)' == 'true'">
+    <Content Include="../SwedishTax.Web/wwwroot/app.css" Link="wwwroot/app.css" />
+  </ItemGroup>
+
+  <Target Name="CheckRustLibrary" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(RustLibraryPath)')" Text="Build the Rust C ABI first: python3 scripts/build-native-engine.py (see README.md)." />
+  </Target>
 </Project>

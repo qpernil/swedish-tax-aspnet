@@ -1,3 +1,5 @@
+@implements IHandleEvent
+
 <article class="income-entry-card">
     <div class="entry-heading">
         <label>
@@ -29,7 +31,7 @@
             <span>Payer role</span>
             <select value="@Entry.PayerRole" @onchange="PayerRoleChanged">
                 <option value="@PayerRole.Main">Main payer</option>
-                <option value="@PayerRole.Secondary">Secondary payer (@(global::SwedishTax.Core.Withholding.SecondaryPayerRate)%)</option>
+                <option value="@PayerRole.Secondary">Secondary payer (@(30)%)</option>
             </select>
         </label>
     </div>
@@ -74,7 +76,8 @@
                 </select>
             </label>
         </div>
-        <p class="microcopy">Both the first and last day are included.</p>
+        <label class="check-field"><input type="checkbox" @bind="Entry.UseAnnualDailyRateForPartialMonths" /><span>Use monthly amount × 12 / 365 for partial months</span></label>
+        <p class="microcopy">Both the first and last day are included. Full months use the monthly amount. Partial months use calendar days unless the annual daily rate is selected.</p>
         @if (!Entry.IsValid)
         {
             <p class="field-error">The last day must be on or after the first day.</p>
@@ -153,9 +156,12 @@
             {
                 <div class="entry-grid compact-grid">
                     <label><span>Annual entitlement</span><input type="number" min="0" max="100" @bind="VacationEntitlementDays" /></label>
+                    <label><span>Daily share of monthly salary</span><input type="number" min="0" max="100" step="0.01" @bind="VacationRatePercentText" /><small>% per paid day</small></label>
                     <label><span>Payout days</span><input type="number" min="0" max="366" @bind="VacationPayoutDays" /></label>
                     <label class="check-field"><input type="checkbox" @bind="VacationInPensionBasis" /><span>Treat this vacation payout as pensionable</span></label>
                 </div>
+                <p class="microcopy">The editable default is 5.4% of monthly salary per paid day. Use the rate in your agreement.</p>
+                <button type="button" class="secondary-button" @onclick="UseSuggestedVacationDays" disabled="@(Entry.Result is null)">Use suggested days (@(Entry.Result?.SuggestedVacationDays))</button>
                 <p class="microcopy">Estimated vacation payout: @FormatSek(Entry.VacationCompensationAmount)</p>
                 @if (VacationInPensionBasis)
                 {
@@ -254,23 +260,45 @@
                     <label class="check-field"><input type="checkbox" @bind="SalaryExchangeAddsUplift" /><span>Employer adds uplift</span></label>
                     <label class="check-field"><input type="checkbox" @bind="Entry.IncludedInPensionSalaryBasis" /><span>Treat this payment as pensionable</span></label>
                 </div>
+                <div class="option-grid">
+                    <label class="check-field"><input type="checkbox" @bind="HasPreviousYearBasis" /><span>Use preceding-year pensionable salary for the allowance</span></label>
+                    @if (HasPreviousYearBasis)
+                    {
+                        <label><span>Preceding-year pensionable salary</span><input type="number" min="0" @bind="PreviousYearBasis" /><small>SEK</small></label>
+                    }
+                    <label class="check-field"><input type="checkbox" @bind="HasConfirmedCosts" /><span>Use confirmed pension and insurance costs before this exchange</span></label>
+                    @if (HasConfirmedCosts)
+                    {
+                        <label><span>Confirmed costs before this exchange</span><input type="number" min="0" @bind="ConfirmedCosts" /><small>SEK</small></label>
+                    }
+                </div>
+                <p class="microcopy">A preceding-year salary basis stays fixed when salary is exchanged. Confirmed costs replace the modeled regular, vacation and other exchange contributions in this allowance calculation.</p>
                 @if (Allowance is { } allowance)
                 {
                     <dl class="value-list comparison-list">
                         <div><dt>Pensionable salary before exchange</dt><dd>@FormatSek(allowance.PensionSalaryBasisBefore)</dd></div>
                         <div><dt>Pensionable salary after exchange</dt><dd>@FormatSek(allowance.PensionSalaryBasisAfter)</dd></div>
                         <div><dt>35% contribution ceiling</dt><dd>@FormatSek(allowance.Ceiling)</dd></div>
+                        <div><dt>Costs before this exchange</dt><dd>@FormatSek(allowance.PensionContributionsBefore)</dd></div>
+                        <div><dt>Regular pension estimate</dt><dd>@FormatSek(allowance.RegularPensionPremiums)</dd></div>
+                        <div><dt>Vacation pension estimate</dt><dd>@FormatSek(allowance.VacationPensionPremiums)</dd></div>
+                        <div><dt>Other exchange contributions</dt><dd>@FormatSek(allowance.OtherExchangeContributions)</dd></div>
+                        <div><dt>Selected contribution within allowance</dt><dd>@FormatSek(allowance.SelectedExchangeContribution)</dd></div>
+                        <div><dt>Total costs counted against allowance</dt><dd>@FormatSek(allowance.TotalEmployerPensionContributions)</dd></div>
+                        <div><dt>Share of allowance salary basis</dt><dd>@allowance.ContributionShareOfBasis.ToString("F2")%</dd></div>
                         <div><dt>Contribution room</dt><dd>@FormatSek(allowance.AvailableContribution)</dd></div>
                     </dl>
                     <p class="microcopy">
                         Resulting pension contribution @FormatSek(Entry.SalaryExchangePensionContribution).
-                        Maximum salary exchange within the @PercentageText.FormatBasisPoints(SalaryExchange.EmployerPensionAllowanceRateBasisPoints)% allowance: @FormatSek(allowance.MaximumSacrifice).
+                        Maximum salary exchange within the 35% allowance: @FormatSek(allowance.MaximumSacrifice).
                     </p>
                 }
             }
         </details>
     }
 
+    @if (Entry.Result is not null)
+    {
     <footer class="entry-result">
         <span>@EligibilityText</span>
         <span>@CashSummaryLabel <strong>@FormatSek(Entry.TotalAnnualAmount)</strong></span>
@@ -279,6 +307,7 @@
             <span>Calculated withholding <strong>@FormatSek(withholding.Withheld)</strong> · @RuleText(withholding.Rule)@AdditionalRuleText(withholding)</span>
         }
     </footer>
+    }
 </article>
 
 @code {
@@ -289,6 +318,13 @@
     [Parameter] public bool HasAdjustment { get; set; }
     [Parameter] public EntryWithholding? Withholding { get; set; }
     [Parameter] public SalaryExchangeAllowance? Allowance { get; set; }
+    [Parameter] public EventCallback OnChange { get; set; }
+    async Task IHandleEvent.HandleEventAsync(EventCallbackWorkItem callback, object? arg)
+    {
+        await callback.InvokeAsync(arg);
+        await OnChange.InvokeAsync();
+        StateHasChanged();
+    }
     [Parameter] public EventCallback<ulong> OnRemove { get; set; }
 
     private string AmountLabel => Entry.Kind switch
@@ -374,7 +410,7 @@
     {
         get => Entry.VacationCompensation.HasValue;
         set => Entry.VacationCompensation = value
-            ? VacationCompensation.Suggested(25, Entry.Start, Entry.End)
+            ? SwedishTax.Native.NativeCalculator.NewVacationCompensation(25, Entry.Result?.SuggestedVacationDays ?? 0)
             : null;
     }
     private uint VacationEntitlementDays
@@ -427,8 +463,7 @@
         get => Entry.RegularPensionPremium.HasValue;
         set => Entry.RegularPensionPremium = value ? new RegularPensionPremium() : null;
     }
-    private uint PensionBenchmarkMonthly => RegularPensionPremium.BenchmarkMonthly(
-        Entry.Kind == IncomeKind.AnnualSalary ? Entry.Amount / 12 : Entry.Amount);
+    private uint PensionBenchmarkMonthly => Entry.Result?.PensionBenchmarkMonthly ?? 0;
     private bool HasPensionOverride
     {
         get => Entry.RegularPensionPremium?.MonthlyOverride.HasValue ?? false;
@@ -448,10 +483,44 @@
         }
     }
 
+    private void UseSuggestedVacationDays()
+    {
+        if (Entry.Result is { } result) VacationPayoutDays = result.SuggestedVacationDays;
+    }
+    private string VacationRatePercentText
+    {
+        get => PercentageText.FormatBasisPoints(Entry.VacationCompensation?.RateBasisPoints ?? SwedishTax.Native.NativeCalculator.DefaultVacationRateBasisPoints);
+        set
+        {
+            if (Entry.VacationCompensation is { } vacation && PercentageText.TryParseBasisPoints(value, 10_000, out var rate))
+                Entry.VacationCompensation = vacation with { RateBasisPoints = rate };
+        }
+    }
+    private bool HasPreviousYearBasis
+    {
+        get => Entry.SalaryExchange?.PreviousYearPensionSalaryBasis.HasValue ?? false;
+        set { if (Entry.SalaryExchange is { } exchange) Entry.SalaryExchange = exchange with { PreviousYearPensionSalaryBasis = value ? Allowance?.PensionSalaryBasisBefore ?? 0 : null }; }
+    }
+    private uint PreviousYearBasis
+    {
+        get => Entry.SalaryExchange?.PreviousYearPensionSalaryBasis ?? 0;
+        set { if (Entry.SalaryExchange is { } exchange) Entry.SalaryExchange = exchange with { PreviousYearPensionSalaryBasis = value }; }
+    }
+    private bool HasConfirmedCosts
+    {
+        get => Entry.SalaryExchange?.PensionAndInsuranceCostsBeforeExchange.HasValue ?? false;
+        set { if (Entry.SalaryExchange is { } exchange) Entry.SalaryExchange = exchange with { PensionAndInsuranceCostsBeforeExchange = value ? Allowance?.PensionContributionsBefore ?? 0 : null }; }
+    }
+    private uint ConfirmedCosts
+    {
+        get => Entry.SalaryExchange?.PensionAndInsuranceCostsBeforeExchange ?? 0;
+        set { if (Entry.SalaryExchange is { } exchange) Entry.SalaryExchange = exchange with { PensionAndInsuranceCostsBeforeExchange = value }; }
+    }
+
     private bool HasSalaryExchange
     {
         get => Entry.SalaryExchange.HasValue;
-        set => Entry.SalaryExchange = value ? new SalaryExchange() : null;
+        set => Entry.SalaryExchange = value ? SwedishTax.Native.NativeCalculator.NewSalaryExchange() : null;
     }
     private uint SalaryExchangeSacrifice
     {

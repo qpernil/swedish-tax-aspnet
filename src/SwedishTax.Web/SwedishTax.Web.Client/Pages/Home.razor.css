@@ -73,7 +73,7 @@
 
 .plan-button {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
     width: 100%;
@@ -764,5 +764,122 @@ footer {
     .value-list > div {
         gap: 12px;
         padding-inline: 8px;
+    }
+}
+
+.workspace-controls { border: 0; margin: 0; padding: 0; min-width: 0; }
+
+.dividend-form {
+    display: grid;
+    gap: 20px;
+    margin: 22px 0;
+}
+
+.dividend-group {
+    min-width: 0;
+    margin: 0;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+}
+
+.dividend-group legend {
+    padding: 0 6px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.dividend-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 16px;
+}
+
+.ownership-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dividend-field {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.dividend-input {
+    display: flex;
+    align-items: center;
+    height: 40px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: var(--surface);
+}
+
+.dividend-input:focus-within {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px var(--focus);
+}
+
+.dividend-input input {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    padding: 0 10px;
+    border: 0;
+    outline: 0;
+    border-radius: inherit;
+    color: var(--text-primary);
+    background: transparent;
+    font-variant-numeric: tabular-nums;
+}
+
+.dividend-input > span {
+    padding: 0 10px 0 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.dividend-toggle {
+    align-items: flex-start;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.dividend-toggle input {
+    flex: 0 0 16px;
+    margin: 2px 0 0;
+}
+
+.dividend-toggle + .dividend-fields {
+    margin-top: 16px;
+}
+
+.interest-toggle {
+    margin-top: 18px;
+}
+
+.dividend-hint {
+    margin: 7px 0 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+@media (min-width: 621px) {
+    .ownership-fields .dividend-field > span:first-child {
+        min-height: 2.8em;
+        display: flex;
+        align-items: flex-end;
+    }
+}
+
+@media (max-width: 620px) {
+    .dividend-fields,
+    .ownership-fields {
+        grid-template-columns: 1fr;
     }
 }

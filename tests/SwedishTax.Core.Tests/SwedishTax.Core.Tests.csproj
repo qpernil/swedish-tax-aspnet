@@ -21,6 +21,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SwedishTax.Core\SwedishTax.Core.csproj" />
+    <ProjectReference Include="..\..\src\SwedishTax.Native\SwedishTax.Native.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="../fixtures/*.json" Link="fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

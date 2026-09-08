@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/qpernil/swedish-tax",
+  "revision": "bd4ddc2b6d00751704643b25839bc470399902ce",
+  "rust_toolchain": "1.98.1",
+  "target": "wasm32-unknown-emscripten",
+  "dotnet_sdk": "10.0.301",
+  "rustflags": "-C panic=abort -C target-cpu=mvp -C target-feature=-bulk-memory-opt,-call-indirect-overlong"
+}

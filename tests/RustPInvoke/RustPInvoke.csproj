@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <WasmBuildNative>true</WasmBuildNative>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RustLibraryPath Condition="'$(RustLibraryPath)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native/libswedish_tax_ios.a</RustLibraryPath>
+    <ReferenceCasesPath Condition="'$(ReferenceCasesPath)' == ''">$(MSBuildThisFileDirectory)obj/native-cases.json</ReferenceCasesPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.9" />
+    <NativeFileReference Include="$(RustLibraryPath)" />
+    <NativeFileReference Include="$(MSBuildThisFileDirectory)abi_probe.c" />
+    <EmbeddedResource Include="$(ReferenceCasesPath)" LogicalName="native-cases.json" />
+  </ItemGroup>
+  <Target Name="CheckRustLibrary" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(RustLibraryPath)')" Text="Build the Rust static library first; see tests/RustPInvoke/README.md." />
+    <Error Condition="!Exists('$(ReferenceCasesPath)')" Text="Generate native reference cases first; see tests/RustPInvoke/README.md." />
+  </Target>
+</Project>

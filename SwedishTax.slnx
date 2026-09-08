@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/SwedishTax.Core/SwedishTax.Core.csproj" />
+    <Project Path="src/SwedishTax.Native/SwedishTax.Native.csproj" />
   </Folder>
   <Folder Name="/src/SwedishTax.Web/">
     <Project Path="src/SwedishTax.Web/SwedishTax.Web.Client/SwedishTax.Web.Client.csproj" />

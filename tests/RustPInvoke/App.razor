@@ -1,0 +1,51 @@
+@using Microsoft.AspNetCore.Components.Web
+@namespace RustPInvoke
+
+<h1>Rust through P/Invoke</h1>
+<p>The existing iOS C interface, linked into Blazor's WebAssembly runtime.</p>
+<p role="status">@status</p>
+<button @onclick="Calculate">Call Rust again</button>
+<button @onclick="Verify">Run reference checks again</button>
+<pre id="result">@output</pre>
+<p id="verification">@verification</p>
+
+@code {
+    private string status = "Starting…";
+    private string output = "";
+    private int calls;
+    private string verification = "";
+
+    protected override void OnInitialized()
+    {
+        Calculate();
+        Verify();
+    }
+
+    private void Verify()
+    {
+        try
+        {
+            verification = InteropChecks.Run();
+        }
+        catch (Exception exception)
+        {
+            verification = $"Reference checks failed: {exception}";
+        }
+    }
+
+    private void Calculate()
+    {
+        try
+        {
+            var result = NativeTax.MonthlyDeduction(32, 1, 55000);
+            calls++;
+            output = $"Table: 32\nColumn: 1\nMonthly income: 55000\nStatus: {result.status}\nKind: {result.kind}\nValue: {result.value}\nCalls: {calls}";
+            status = result.status == 0 ? "Rust P/Invoke succeeded" : "Rust returned an error";
+        }
+        catch (Exception exception)
+        {
+            status = "Rust P/Invoke failed";
+            output = exception.ToString();
+        }
+    }
+}
