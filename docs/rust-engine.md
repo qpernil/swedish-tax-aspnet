@@ -107,8 +107,9 @@ regenerate declarations if the C header changes, and review/copy the provider's
 `tests/fixtures/*.json` into `tests/fixtures`. Rebuild with
 `scripts/build-native-engine.py`, run the .NET suite and both browser suites,
 and commit the consumer changes together. Rebuild and test the iOS XCFramework
-from the same provider revision when checking cross-client parity; iOS CI
-otherwise follows the provider's `master` branch. Review the provider, iOS and
+from the same provider revision when checking cross-client parity. The iOS
+repository's `native-engine.json` pins its provider revision and compiler; update
+both client pins together. Review the provider, iOS and
 browser documentation together for shared contract changes. The provider
 generates current reference fixtures with `cargo xtask fixtures` and verifies them
 with `cargo xtask fixtures --check`. Both repositories check in the fixture JSON;
