@@ -69,7 +69,7 @@ compatibility, supported tooling and the provider-update workflow.
 
 ## Build and run
 
-Use .NET SDK 10.0.301 with its `wasm-tools` workload and Rust 1.98.1. The build
+Use .NET SDK 10.0.301 with its `wasm-tools` workload and stable Rust. The build
 requires a clean `swedish-tax` checkout at the revision in `native-engine.json`;
 the default location is adjacent to this repository. Generated libraries live
 in ignored `artifacts/` directories. `scripts/build-native-engine.py` verifies
@@ -78,9 +78,9 @@ the provider's `cargo xtask wasm` to compile the WebAssembly C library.
 `dotnet build`/`publish` link that library into the browser runtime.
 
 ```sh
-rustup toolchain install 1.98.1 --component rust-src --target wasm32-unknown-emscripten
+rustup toolchain install stable --component rust-src --target wasm32-unknown-emscripten
 dotnet workload install wasm-tools --skip-manifest-update
-RUSTUP_TOOLCHAIN=1.98.1 python3 scripts/build-native-engine.py --source ../swedish-tax
+RUSTUP_TOOLCHAIN=stable python3 scripts/build-native-engine.py --source ../swedish-tax
 dotnet restore SwedishTax.slnx
 dotnet build SwedishTax.slnx -c Release
 dotnet test SwedishTax.slnx -c Release
@@ -113,7 +113,7 @@ native WASM, fixture results, offline edits without requests, saved plans,
 validation, mobile layout, and storage failures. See the
 [ABI harness](tests/RustPInvoke/README.md) for lower-level verification.
 
-The pinned toolchain rebuilds Rust's standard library using experimental Cargo
+The stable toolchain rebuilds Rust's standard library using experimental Cargo
 `build-std`, with `RUSTC_BOOTSTRAP` scoped to that build. Rust panics abort the
 browser runtime instead of returning an FFI error. These remain compatibility
 constraints of the supported design; ordinary invalid inputs return errors.

@@ -81,12 +81,12 @@ There are no old-schema migrations.
 
 ## Build and provider updates
 
-`native-engine.json` pins the provider commit, Rust compiler, target, SDK and
-Rust flags. The build script selects the pinned Rust toolchain by default and
-passes it through to Cargo when entering the provider workspace. An explicit
-`RUSTUP_TOOLCHAIN` is accepted only if its compiler matches the pinned version;
-that installation must include `rust-src` and the target. CI uses the pin for
-every Rust build, including the ABI harness.
+`native-engine.json` pins the provider commit, target, SDK and Rust flags, and
+selects the stable Rust channel. The build script selects that channel by default
+and passes it through to Cargo when entering the provider workspace. An explicit
+`RUSTUP_TOOLCHAIN` is accepted only if its compiler matches the installed stable
+compiler; that installation must include `rust-src` and the target. CI uses the
+same selection for every Rust build, including the ABI harness.
 
 The build verifies a clean provider, generated declarations, and
 all shared fixtures before building the host test library and invoking the
@@ -98,9 +98,10 @@ and compiler. Binary artifacts are not committed. A rewritten provider history
 requires updating the pinned SHA even if its source tree is identical.
 
 The supported build host is macOS or Linux. Install .NET SDK 10.0.301 and its
-bundled `wasm-tools` manifest without updating it, plus Rust 1.98.1 with
-`rust-src` and `wasm32-unknown-emscripten`. The verified .NET runtime/workload
-packs are 10.0.9, with Emscripten 3.1.56. See the root README for commands.
+bundled `wasm-tools` manifest without updating it, plus stable Rust with
+`rust-src` and `wasm32-unknown-emscripten`. Verified .NET runtime/workload
+packs include 10.0.9 and 10.0.11, with Emscripten 3.1.56. See the root README
+for commands.
 
 To update the engine, commit provider changes first, update `native-engine.json`,
 regenerate declarations if the C header changes, and review/copy the provider's
@@ -108,9 +109,10 @@ regenerate declarations if the C header changes, and review/copy the provider's
 `scripts/build-native-engine.py`, run the .NET suite and both browser suites,
 and commit the consumer changes together. Rebuild and test the iOS XCFramework
 from the same provider revision when checking cross-client parity. The iOS
-repository's `native-engine.json` pins its provider revision and compiler; update
-both client pins together. Review the provider, iOS and
-browser documentation together for shared contract changes. The provider
+repository's `native-engine.json` pins its provider revision and selects the stable
+Rust channel; keep both clients' provider revisions and channel selections
+aligned. Review the provider, iOS and browser documentation together for shared
+contract changes. The provider
 generates current reference fixtures with `cargo xtask fixtures` and verifies them
 with `cargo xtask fixtures --check`. Both repositories check in the fixture JSON;
 the provider owns the generator and expected results. See the

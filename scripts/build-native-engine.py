@@ -23,7 +23,11 @@ def main():
     # Keep the selected toolchain when entering the provider workspace.
     env.setdefault("RUSTUP_TOOLCHAIN", pin["rust_toolchain"])
     rustc = subprocess.check_output(["rustc", "--version"], env=env, text=True).strip()
-    if not rustc.startswith("rustc " + pin["rust_toolchain"] + " "):
+    expected_rustc = subprocess.check_output(
+        ["rustup", "run", pin["rust_toolchain"], "rustc", "--version"],
+        text=True,
+    ).strip()
+    if rustc != expected_rustc:
         raise SystemExit("Select RUSTUP_TOOLCHAIN=" + pin["rust_toolchain"])
     revision = subprocess.check_output(["git", "-C", source, "rev-parse", "HEAD"], text=True).strip()
     expected = subprocess.check_output(["git", "-C", source, "rev-parse", pin["revision"]], text=True).strip()

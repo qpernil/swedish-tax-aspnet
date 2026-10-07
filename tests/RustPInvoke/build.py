@@ -27,9 +27,16 @@ def main():
     args = parser.parse_args()
     source = args.rust_source.resolve()
     output = args.output.resolve()
-    version = subprocess.check_output(["rustc", "--version"], text=True).strip()
-    if not version.startswith("rustc 1.98.1 "):
-        raise SystemExit("This test harness is verified with Rust 1.98.1. Select it with RUSTUP_TOOLCHAIN=1.98.1.")
+    pin = json.loads((REPOSITORY / "native-engine.json").read_text())
+    env = os.environ.copy()
+    env.setdefault("RUSTUP_TOOLCHAIN", pin["rust_toolchain"])
+    version = subprocess.check_output(["rustc", "--version"], env=env, text=True).strip()
+    expected_version = subprocess.check_output(
+        ["rustup", "run", pin["rust_toolchain"], "rustc", "--version"], text=True,
+    ).strip()
+    if version != expected_version:
+        raise SystemExit("Select RUSTUP_TOOLCHAIN=" + pin["rust_toolchain"])
+    os.environ["RUSTUP_TOOLCHAIN"] = env["RUSTUP_TOOLCHAIN"]
     sdk = subprocess.check_output([args.dotnet, "--version"], text=True).strip()
     if sdk != "10.0.301":
         raise SystemExit("This test harness requires the repository's .NET SDK 10.0.301 and wasm-tools workload.")

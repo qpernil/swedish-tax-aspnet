@@ -11,8 +11,9 @@ and operate the DOM. A static HTTP server suffices for this harness.
 
 ## Build and verify
 
-Verified on macOS ARM64 with Rust 1.98.1, .NET SDK 10.0.301, runtime/workload
-packs 10.0.9 and the workload's Emscripten 3.1.56 tools. Install `rust-src`, the
+The harness uses stable Rust on macOS ARM64 or Linux and .NET SDK 10.0.301.
+Verified runtime/workload packs include 10.0.9 and 10.0.11, with Emscripten
+3.1.56 tools. Install `rust-src`, the
 `wasm32-unknown-emscripten` Rust target, and the `wasm-tools` .NET workload in the
 SDK used for the build. The default Rust source is the adjacent `swedish-tax`
 checkout. The build reads its existing C interface and generated header.
@@ -20,16 +21,16 @@ checkout. The build reads its existing C interface and generated header.
 From the repository root:
 
 ```sh
-rustup toolchain install 1.98.1 --component rust-src --target wasm32-unknown-emscripten
+rustup toolchain install stable --component rust-src --target wasm32-unknown-emscripten
 dotnet workload install wasm-tools --skip-manifest-update
-RUSTUP_TOOLCHAIN=1.98.1 python3 tests/RustPInvoke/build.py
+RUSTUP_TOOLCHAIN=stable python3 tests/RustPInvoke/build.py
 python3 -m http.server 5182 --bind 127.0.0.1 --directory tests/RustPInvoke/bin/pinvoke-publish/wwwroot
 ```
 
 An isolated SDK can be selected with `--dotnet /path/to/dotnet`. Use
 `--rust-source /path/to/swedish-tax` and `--output /path/to/publish` to override
-the source and output locations. To select a separately installed, pinned Rust
-toolchain, set `RUSTUP_TOOLCHAIN=1.98.1` for the build. Generated libraries,
+the source and output locations. To select a separately installed stable Rust
+toolchain, set `RUSTUP_TOOLCHAIN=stable` for the build. Generated libraries,
 reference data and published files live in ignored `obj`/`bin` directories.
 The output contains `build-info.json` recording the provider revision, dirty
 state, compiler versions and reference-case counts.
@@ -110,7 +111,7 @@ declarations. The application uses
 - Rust and its standard library are rebuilt for the Emscripten target with
   `target-cpu=mvp` and the LLVM `bulk-memory-opt` and `call-indirect-overlong`
   features disabled. The optimizer bundled with this .NET workload cannot read
-  those newer feature labels. The pinned compiler warns that the two LLVM
+  those newer feature labels. The stable compiler warns that the two LLVM
   feature flags are unstable.
 - Rebuilding the standard library uses experimental Cargo `-Z build-std` with
   `RUSTC_BOOTSTRAP=1` scoped to that command. The application and harness use the
