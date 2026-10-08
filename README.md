@@ -69,7 +69,10 @@ compatibility, supported tooling and the provider-update workflow.
 
 ## Build and run
 
-Use .NET SDK 10.0.301 with its `wasm-tools` workload and stable Rust. The build
+Use .NET SDK 10 or later with its `wasm-tools` workload and stable Rust.
+`global.json` selects the latest installed stable SDK; CI installs the latest
+stable SDK. Application projects target .NET 10. Install the workload for the
+selected SDK when changing SDK feature bands. The build
 requires a clean `swedish-tax` checkout at the revision in `native-engine.json`;
 the default location is adjacent to this repository. Generated libraries live
 in ignored `artifacts/` directories. `scripts/build-native-engine.py` verifies

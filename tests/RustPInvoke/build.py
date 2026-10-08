@@ -38,8 +38,8 @@ def main():
         raise SystemExit("Select RUSTUP_TOOLCHAIN=" + pin["rust_toolchain"])
     os.environ["RUSTUP_TOOLCHAIN"] = env["RUSTUP_TOOLCHAIN"]
     sdk = subprocess.check_output([args.dotnet, "--version"], text=True).strip()
-    if sdk != "10.0.301":
-        raise SystemExit("This test harness requires the repository's .NET SDK 10.0.301 and wasm-tools workload.")
+    if int(sdk.split(".", 1)[0]) < 10:
+        raise SystemExit("This test harness requires .NET SDK 10 or later with the wasm-tools workload.")
 
     obj = HERE / "obj"
     obj.mkdir(exist_ok=True)

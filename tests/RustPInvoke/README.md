@@ -11,11 +11,14 @@ and operate the DOM. A static HTTP server suffices for this harness.
 
 ## Build and verify
 
-The harness uses stable Rust on macOS ARM64 or Linux and .NET SDK 10.0.301.
+The harness uses stable Rust on macOS ARM64 or Linux and .NET SDK 10 or later.
+The repository selects the latest installed stable SDK; the harness accepts
+that selection and records its actual version.
 Verified runtime/workload packs include 10.0.9 and 10.0.11, with Emscripten
 3.1.56 tools. Install `rust-src`, the
 `wasm32-unknown-emscripten` Rust target, and the `wasm-tools` .NET workload in the
-SDK used for the build. The default Rust source is the adjacent `swedish-tax`
+SDK used for the build, including after an SDK feature-band upgrade.
+The default Rust source is the adjacent `swedish-tax`
 checkout. The build reads its existing C interface and generated header.
 
 From the repository root:

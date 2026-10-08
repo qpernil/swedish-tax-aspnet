@@ -81,9 +81,11 @@ There are no old-schema migrations.
 
 ## Build and provider updates
 
-`native-engine.json` pins the provider commit, target, SDK and Rust flags, and
-selects the stable Rust channel. The build script selects that channel by default
-and passes it through to Cargo when entering the provider workspace. An explicit
+`native-engine.json` pins the provider commit, target and Rust flags, and
+selects the stable Rust channel and latest stable .NET SDK for CI.
+`global.json` selects the highest installed stable SDK without a version pin.
+The Rust build script selects the stable Rust channel by default and passes it
+through to Cargo when entering the provider workspace. An explicit
 `RUSTUP_TOOLCHAIN` is accepted only if its compiler matches the installed stable
 compiler; that installation must include `rust-src` and the target. CI uses the
 same selection for every Rust build, including the ABI harness.
@@ -97,11 +99,13 @@ and shared header. .NET owns the final runtime link and application publication.
 and compiler. Binary artifacts are not committed. A rewritten provider history
 requires updating the pinned SHA even if its source tree is identical.
 
-The supported build host is macOS or Linux. Install .NET SDK 10.0.301 and its
-bundled `wasm-tools` manifest without updating it, plus stable Rust with
+The supported build host is macOS or Linux. Install .NET SDK 10 or later and
+its `wasm-tools` workload, plus stable Rust with
 `rust-src` and `wasm32-unknown-emscripten`. Verified .NET runtime/workload
 packs include 10.0.9 and 10.0.11, with Emscripten 3.1.56. See the root README
-for commands.
+for commands. SDK feature-band upgrades require installing the workload for the
+selected SDK and rerunning both browser suites; the ABI harness records the
+actual SDK version. The application target remains .NET 10.
 
 To update the engine, commit provider changes first, update `native-engine.json`,
 regenerate declarations if the C header changes, and review/copy the provider's
