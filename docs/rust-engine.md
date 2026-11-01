@@ -101,8 +101,9 @@ requires updating the pinned SHA even if its source tree is identical.
 
 The supported build host is macOS or Linux. Install .NET SDK 10 or later and
 its `wasm-tools` workload, plus stable Rust with
-`rust-src` and `wasm32-unknown-emscripten`. Verified .NET runtime/workload
-packs include 10.0.9 and 10.0.11, with Emscripten 3.1.56. See the root README
+`rust-src` and `wasm32-unknown-emscripten`. Verified tooling is .NET SDK
+10.0.403 with WebAssembly runtime/workload packs 10.0.12, Blazor packages
+10.0.14 and Emscripten 3.1.56. See the root README
 for commands. SDK feature-band upgrades require installing the workload for the
 selected SDK and rerunning both browser suites; the ABI harness records the
 actual SDK version. The application target remains .NET 10.
@@ -150,8 +151,9 @@ returns are covered. This build does not provide recoverable Rust panics.
   all 10 exports, null and invalid inputs, and 1,000 allocation/free cycles.
 - The published app and harness are exercised in Chromium/Chrome, Firefox and
   WebKit, including offline execution. Mac verification used Chrome
-  152.0.7977.83, Playwright Firefox 153.0 and WebKit 26.5. WebKit testing does
-  not claim physical iOS or shipping Safari verification.
+  for Testing 156.0.8078.4, Playwright Firefox 157.0 and WebKit 27.2 with
+  Playwright 1.64.1. WebKit testing does not claim physical iOS or shipping
+  Safari verification.
 - CI checks the pinned provider and declarations, runs Rust and .NET tests,
   builds the hosted application, ABI harness and static Pages artifact, and tests
   all three in Chromium, Firefox and WebKit before deploying the tested static files.

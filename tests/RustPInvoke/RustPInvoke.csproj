@@ -9,7 +9,7 @@
     <ReferenceCasesPath Condition="'$(ReferenceCasesPath)' == ''">$(MSBuildThisFileDirectory)obj/native-cases.json</ReferenceCasesPath>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.9" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.14" />
     <NativeFileReference Include="$(RustLibraryPath)" />
     <NativeFileReference Include="$(MSBuildThisFileDirectory)abi_probe.c" />
     <EmbeddedResource Include="$(ReferenceCasesPath)" LogicalName="native-cases.json" />

@@ -121,6 +121,23 @@ The stable toolchain rebuilds Rust's standard library using experimental Cargo
 browser runtime instead of returning an FFI error. These remain compatibility
 constraints of the supported design; ordinary invalid inputs return errors.
 
+## Dependency updates
+
+Update the solution and the separate ABI harness from the repository root:
+
+```sh
+dotnet package update --project SwedishTax.slnx
+dotnet package update --project tests/RustPInvoke/RustPInvoke.csproj
+pnpm update --latest
+pnpm exec playwright install chromium firefox webkit
+```
+
+The ABI harness is outside the solution because its build requires generated
+native reference data. Keep its Blazor package version aligned with the web
+application. Playwright updates require matching browser downloads. Verify the
+Release build, .NET tests, hosted and static browser suites, and ABI harness
+after updating dependencies.
+
 ## Sources
 
 The Rust repository maintains the calculation sources and business-rule tests.

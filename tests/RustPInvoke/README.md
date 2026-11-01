@@ -14,8 +14,8 @@ and operate the DOM. A static HTTP server suffices for this harness.
 The harness uses stable Rust on macOS ARM64 or Linux and .NET SDK 10 or later.
 The repository selects the latest installed stable SDK; the harness accepts
 that selection and records its actual version.
-Verified runtime/workload packs include 10.0.9 and 10.0.11, with Emscripten
-3.1.56 tools. Install `rust-src`, the
+Verified tooling is .NET SDK 10.0.403 with WebAssembly runtime/workload packs
+10.0.12, Blazor packages 10.0.14 and Emscripten 3.1.56. Install `rust-src`, the
 `wasm32-unknown-emscripten` Rust target, and the `wasm-tools` .NET workload in the
 SDK used for the build, including after an SDK feature-band upgrade.
 The default Rust source is the adjacent `swedish-tax`
@@ -46,7 +46,8 @@ PLAYWRIGHT_BROWSER=firefox node tests/RustPInvoke/smoke.cjs
 PLAYWRIGHT_BROWSER=webkit node tests/RustPInvoke/smoke.cjs
 ```
 
-Install the other test engines with `npx playwright install firefox webkit`.
+Install the test engines with `pnpm exec playwright install chromium firefox webkit`.
+Repeat this command after updating Playwright to download its matching browsers.
 Omit `PLAYWRIGHT_CHANNEL` to use Playwright's bundled Chromium. `PINVOKE_URL`
 overrides the default `http://127.0.0.1:5182`; `PINVOKE_SCREENSHOT` optionally
 saves a screenshot.
@@ -74,9 +75,10 @@ that one combined native WASM module loads.
 JSON in this harness is only for loading native-generated test fixtures;
 the calculation calls themselves pass C-compatible structures directly.
 
-The complete published-build suite passes in Chrome 152.0.7977.83, Playwright
-Firefox 153.0 and Playwright WebKit 26.5 on this Mac. The WebKit run exercises
-that engine; it is not a separate verification on an iPhone or shipping Safari.
+The complete published-build suite passes with Playwright 1.64.1 in Chrome
+for Testing 156.0.8078.4, Firefox 157.0 and WebKit 27.2 on this Mac. The WebKit
+run exercises that engine; it is not a separate verification on an iPhone or
+shipping Safari.
 
 ## Generated declarations and ownership
 
