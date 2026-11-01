@@ -51,12 +51,17 @@ jobs:
           node-version: '22'
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
+      - name: Audit JavaScript dependencies
+        run: pnpm audit --audit-level=low
+      - name: Restore and audit all NuGet projects
+        run: |
+          dotnet restore SwedishTax.slnx --force
+          dotnet restore tests/RustPInvoke/RustPInvoke.csproj --force
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Build pinned Rust C ABI and verify generated declarations and fixtures
         run: python3 scripts/build-native-engine.py --source .rust-provider
       - name: Rust C ABI and reference contract tests
         run: cargo test --manifest-path .rust-provider/Cargo.toml -p swedish-tax-ios -p xtask --locked
-      - run: dotnet restore SwedishTax.slnx
       - run: dotnet build SwedishTax.slnx --configuration Release --no-restore
       - run: dotnet test SwedishTax.slnx --configuration Release --no-build
       - run: dotnet publish src/SwedishTax.Web/SwedishTax.Web -c Release -o /tmp/swedish-tax-publish

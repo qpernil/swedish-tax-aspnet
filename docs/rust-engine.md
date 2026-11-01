@@ -154,8 +154,9 @@ returns are covered. This build does not provide recoverable Rust panics.
   for Testing 156.0.8078.4, Playwright Firefox 157.0 and WebKit 27.2 with
   Playwright 1.64.1. WebKit testing does not claim physical iOS or shipping
   Safari verification.
-- CI checks the pinned provider and declarations, runs Rust and .NET tests,
-  builds the hosted application, ABI harness and static Pages artifact, and tests
+- CI audits JavaScript and NuGet dependencies, checks the pinned provider and
+  declarations, runs Rust and .NET tests, builds the hosted application, ABI
+  harness and static Pages artifact, and tests
   all three in Chromium, Firefox and WebKit. Successful pushes and manual runs
   on `master` deploy the tested static files. Weekly Monday validation runs
   the same checks without uploading a Pages artifact or deploying; see

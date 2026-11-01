@@ -143,6 +143,24 @@ Playwright updates require matching browser downloads. Verify the Release build,
 .NET tests, hosted and static browser suites, and ABI harness after updating
 dependencies.
 
+CI runs `pnpm audit --audit-level=low` after the frozen-lockfile install,
+including development and transitive dependencies. NuGet restore audits direct
+and transitive packages using the repository's `Directory.Build.props` and
+`NuGet.Config`. When `CI=true`, all projects treat low, moderate, high and
+critical advisories, audit-data retrieval failures, and missing vulnerability
+metadata as errors (`NU1900`–`NU1905`). CI forces restore for both the solution
+and the separate ABI harness before building. Pushes, pull requests, manual
+runs and weekly validation use the same audit policy; a failed audit prevents
+deployment.
+
+To run the same audits locally:
+
+```sh
+pnpm audit --audit-level=low
+CI=true dotnet restore SwedishTax.slnx --force
+CI=true dotnet restore tests/RustPInvoke/RustPInvoke.csproj --force
+```
+
 ## Sources
 
 The Rust repository maintains the calculation sources and business-rule tests.

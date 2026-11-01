@@ -7,8 +7,11 @@ There is no ASP.NET process or calculation endpoint on GitHub Pages.
 
 ## CI owns the deployed artifact
 
-`.github/workflows/ci.yml` builds the pinned Rust library and runs the native,
-.NET and browser verification suites. It then publishes the client with
+`.github/workflows/ci.yml` audits pnpm and NuGet dependencies before building
+the pinned Rust library and running the native, .NET and browser verification
+suites. Both audits fail CI for vulnerabilities of low severity or higher, or
+unavailable audit data; the [dependency policy](../README.md#dependency-updates) includes
+the separate ABI harness. The workflow then publishes the client with
 `StaticSite=true`, sets the repository base path, and tests the actual static
 artifact under that path in Chromium, Firefox and WebKit. Pull requests and
 weekly scheduled runs execute these checks without uploading a Pages artifact
