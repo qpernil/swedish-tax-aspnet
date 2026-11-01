@@ -123,20 +123,25 @@ constraints of the supported design; ordinary invalid inputs return errors.
 
 ## Dependency updates
 
-Update the solution and the separate ABI harness from the repository root:
+NuGet package versions are declared in the root `Directory.Packages.props`.
+Every project, including the separate ABI harness, inherits those versions;
+project files declare package references without versions. Keep the two Blazor
+package versions aligned in the central file.
+
+Run dependency updates from the repository root:
 
 ```sh
 dotnet package update --project SwedishTax.slnx
-dotnet package update --project tests/RustPInvoke/RustPInvoke.csproj
 pnpm update --latest
 pnpm exec playwright install chromium firefox webkit
 ```
 
 The ABI harness is outside the solution because its build requires generated
-native reference data. Keep its Blazor package version aligned with the web
-application. Playwright updates require matching browser downloads. Verify the
-Release build, .NET tests, hosted and static browser suites, and ABI harness
-after updating dependencies.
+native reference data, and shares the web application's central Blazor package
+entry. The solution update command therefore covers all current NuGet versions.
+Playwright updates require matching browser downloads. Verify the Release build,
+.NET tests, hosted and static browser suites, and ABI harness after updating
+dependencies.
 
 ## Sources
 
