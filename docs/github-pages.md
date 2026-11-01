@@ -10,14 +10,24 @@ There is no ASP.NET process or calculation endpoint on GitHub Pages.
 `.github/workflows/ci.yml` builds the pinned Rust library and runs the native,
 .NET and browser verification suites. It then publishes the client with
 `StaticSite=true`, sets the repository base path, and tests the actual static
-artifact under that path in Chromium, Firefox and WebKit. Pull requests run
-these checks without deploying.
+artifact under that path in Chromium, Firefox and WebKit. Pull requests and
+weekly scheduled runs execute these checks without uploading a Pages artifact
+or deploying.
 
-For a successful `master` build, `actions/upload-pages-artifact` uploads that
-same directory. The dependent deployment job uses `actions/deploy-pages` to
-publish it to the `github-pages` environment. Deployment does not rebuild the
-site. Generated site files are neither committed nor uploaded from a developer's
-machine. A manual workflow run on `master` also builds, tests and deploys.
+For a successful push or manual run on `master`,
+`actions/upload-pages-artifact` uploads that same directory. The dependent
+deployment job uses `actions/deploy-pages` to publish it to the `github-pages`
+environment. Deployment does not rebuild the site. Generated site files are
+neither committed nor uploaded from a developer's machine.
+
+Weekly validation runs on the latest default-branch commit every Monday at
+06:17 UTC (07:17 in winter and 08:17 in summer in Stockholm). It exercises
+the pinned Rust provider with the selected stable Rust and latest stable .NET
+SDK, and preserves the usual build provenance and logs. Its separate
+concurrency group prevents scheduled validation from cancelling a push or
+manual run. GitHub may delay scheduled runs and automatically disables public
+repository schedules after 60 days without repository activity; see the
+[schedule event documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
 The repository's **Settings → Pages → Build and deployment → Source** must be
 **GitHub Actions**. The workflow has Pages and OIDC write permissions only in

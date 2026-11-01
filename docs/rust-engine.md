@@ -156,4 +156,7 @@ returns are covered. This build does not provide recoverable Rust panics.
   Safari verification.
 - CI checks the pinned provider and declarations, runs Rust and .NET tests,
   builds the hosted application, ABI harness and static Pages artifact, and tests
-  all three in Chromium, Firefox and WebKit before deploying the tested static files.
+  all three in Chromium, Firefox and WebKit. Successful pushes and manual runs
+  on `master` deploy the tested static files. Weekly Monday validation runs
+  the same checks without uploading a Pages artifact or deploying; see
+  [hosting](github-pages.md) for the schedule and deployment conditions.

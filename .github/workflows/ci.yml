@@ -4,12 +4,14 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}${{ github.event_name == 'schedule' && '-scheduled' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -101,7 +103,7 @@ jobs:
           done
           for engine in chromium firefox webkit; do PLAYWRIGHT_BROWSER="$engine" pnpm test:browser; done
       - name: Upload tested Pages artifact
-        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-pages-artifact@v4
         with:
           path: artifacts/pages
@@ -120,7 +122,7 @@ jobs:
   deploy:
     name: Deploy calculator to GitHub Pages
     needs: test
-    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       pages: write
