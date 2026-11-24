@@ -25,7 +25,7 @@ From the repository root:
 
 ```sh
 rustup toolchain install stable --component rust-src --target wasm32-unknown-emscripten
-dotnet workload install wasm-tools --skip-manifest-update
+dotnet workload restore tests/RustPInvoke/RustPInvoke.csproj --skip-manifest-update
 RUSTUP_TOOLCHAIN=stable python3 tests/RustPInvoke/build.py
 python3 -m http.server 5182 --bind 127.0.0.1 --directory tests/RustPInvoke/bin/pinvoke-publish/wwwroot
 ```

@@ -45,7 +45,10 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ steps.engine.outputs.dotnet_sdk }}
-      - run: dotnet workload install wasm-tools --skip-manifest-update
+      - name: Restore workloads for the application target frameworks
+        run: |
+          dotnet workload restore SwedishTax.slnx --skip-manifest-update
+          dotnet workload restore tests/RustPInvoke/RustPInvoke.csproj --skip-manifest-update
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

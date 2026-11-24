@@ -69,10 +69,13 @@ compatibility, supported tooling and the provider-update workflow.
 
 ## Build and run
 
-Use .NET SDK 10 or later with its `wasm-tools` workload and stable Rust.
+Use .NET SDK 10 or later with the workloads required by the .NET 10 projects
+and stable Rust.
 `global.json` selects the latest installed stable SDK; CI installs the latest
 stable SDK. Application projects target .NET 10. Install the workload for the
-selected SDK when changing SDK feature bands. The build
+selected SDK when changing SDK feature bands. `dotnet workload restore` selects
+the tools for the project target, including `wasm-tools-net10` when using a
+newer SDK. The build
 requires a clean `swedish-tax` checkout at the revision in `native-engine.json`;
 the default location is adjacent to this repository. Generated libraries live
 in ignored `artifacts/` directories. `scripts/build-native-engine.py` verifies
@@ -82,7 +85,8 @@ the provider's `cargo xtask wasm` to compile the WebAssembly C library.
 
 ```sh
 rustup toolchain install stable --component rust-src --target wasm32-unknown-emscripten
-dotnet workload install wasm-tools --skip-manifest-update
+dotnet workload restore SwedishTax.slnx --skip-manifest-update
+dotnet workload restore tests/RustPInvoke/RustPInvoke.csproj --skip-manifest-update
 RUSTUP_TOOLCHAIN=stable python3 scripts/build-native-engine.py --source ../swedish-tax
 dotnet restore SwedishTax.slnx
 dotnet build SwedishTax.slnx -c Release

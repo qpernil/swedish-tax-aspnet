@@ -100,13 +100,16 @@ and compiler. Binary artifacts are not committed. A rewritten provider history
 requires updating the pinned SHA even if its source tree is identical.
 
 The supported build host is macOS or Linux. Install .NET SDK 10 or later and
-its `wasm-tools` workload, plus stable Rust with
+the workloads restored from the application solution and ABI harness projects,
+plus stable Rust with
 `rust-src` and `wasm32-unknown-emscripten`. Verified tooling is .NET SDK
 10.0.403 with WebAssembly runtime/workload packs 10.0.12, Blazor packages
 10.0.14 and Emscripten 3.1.56. See the root README
 for commands. SDK feature-band upgrades require installing the workload for the
 selected SDK and rerunning both browser suites; the ABI harness records the
-actual SDK version. The application target remains .NET 10.
+actual SDK version. The application target remains .NET 10. Restore workloads
+from the projects rather than installing the SDK's default `wasm-tools`: a newer
+SDK requires the target-specific `wasm-tools-net10` workload.
 
 To update the engine, commit provider changes first, update `native-engine.json`,
 regenerate declarations if the C header changes, and review/copy the provider's
