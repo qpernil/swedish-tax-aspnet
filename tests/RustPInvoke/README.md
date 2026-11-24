@@ -11,13 +11,14 @@ and operate the DOM. A static HTTP server suffices for this harness.
 
 ## Build and verify
 
-The harness uses stable Rust on macOS ARM64 or Linux and .NET SDK 10 or later.
+The harness uses stable Rust on macOS ARM64 or Linux and .NET SDK 11 or later.
 The repository selects the latest installed stable SDK; the harness accepts
 that selection and records its actual version.
-Verified tooling is .NET SDK 10.0.403 with WebAssembly runtime/workload packs
-10.0.12, Blazor packages 10.0.14 and Emscripten 3.1.56. Install `rust-src`, the
-`wasm32-unknown-emscripten` Rust target, and the `wasm-tools` .NET workload in the
-SDK used for the build, including after an SDK feature-band upgrade.
+The harness targets .NET 11 and uses the application's Blazor 11 packages.
+Verification uses SDK 11.0.100, runtime/workload 11.0.0, and Emscripten 6.0.2.
+Install `rust-src` and the `wasm32-unknown-emscripten` Rust target, then restore
+workloads from the harness project for the selected SDK, including after an
+SDK feature-band upgrade.
 The default Rust source is the adjacent `swedish-tax`
 checkout. The build reads its existing C interface and generated header.
 
@@ -35,8 +36,8 @@ An isolated SDK can be selected with `--dotnet /path/to/dotnet`. Use
 the source and output locations. To select a separately installed stable Rust
 toolchain, set `RUSTUP_TOOLCHAIN=stable` for the build. Generated libraries,
 reference data and published files live in ignored `obj`/`bin` directories.
-The output contains `build-info.json` recording the provider revision, dirty
-state, compiler versions and reference-case counts.
+The output contains `build-info.json` recording the selected provider ref,
+resolved commit, dirty state, compiler versions and reference-case counts.
 
 With the repository's Playwright dependency installed, run in another terminal:
 
@@ -115,12 +116,12 @@ declarations. The application uses
   name. It does not apply a desktop shared-library name lookup here.
 - Rust and its standard library are rebuilt for the Emscripten target with
   `target-cpu=mvp` and the LLVM `bulk-memory-opt` and `call-indirect-overlong`
-  features disabled. The optimizer bundled with this .NET workload cannot read
-  those newer feature labels. The stable compiler warns that the two LLVM
-  feature flags are unstable.
+  features disabled. These flags retain compatibility with older .NET
+  optimizers that cannot read those feature labels. The stable compiler warns
+  that the two LLVM feature flags are unstable.
 - Rebuilding the standard library uses experimental Cargo `-Z build-std` with
   `RUSTC_BOOTSTRAP=1` scoped to that command. The application and harness use the
-  same pinned, tested configuration;
+  same configured, tested flags;
   compiler upgrades require repeating the full verification.
 - The WebAssembly library uses `panic=abort`. Unexpected Rust panics terminate
   execution instead of being converted by the iOS interface's `catch_unwind`
@@ -135,5 +136,5 @@ declarations. The application uses
 The production architecture is documented in
 [the engine guide](../../docs/rust-engine.md). The harness build
 invokes `scripts/build-native-engine.py`, which calls the provider's
-`cargo xtask wasm` and supplies the same static archive used by the application. That script requires a clean provider at the pinned revision
-and checks the production declarations and shared fixtures as well.
+`cargo xtask wasm` and supplies the same static archive used by the application.
+That script requires a clean provider at the selected ref and checks the production declarations and shared fixtures as well.

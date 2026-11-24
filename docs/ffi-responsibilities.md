@@ -51,7 +51,7 @@ boundaries, not another tax or editor-rule implementation.
 
 The C API has one supported layout and unversioned export names. Provider and clients
 are built together; there is no version negotiation, legacy ABI or migration dispatch.
-Generated declarations, pinned provider source and layout tests enforce the build contract.
+Generated declarations, selected provider source and layout tests enforce the build contract.
 The browser uses P/Invoke with Rust statically linked into `dotnet.native.wasm`.
 Rust-owned buffers are copied and returned exactly once to their matching Rust free function.
 

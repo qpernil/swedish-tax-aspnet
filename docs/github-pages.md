@@ -8,7 +8,7 @@ There is no ASP.NET process or calculation endpoint on GitHub Pages.
 ## CI owns the deployed artifact
 
 `.github/workflows/ci.yml` audits pnpm and NuGet dependencies before building
-the pinned Rust library and running the native, .NET and browser verification
+the selected Rust library and running the native, .NET and browser verification
 suites. Both audits fail CI for vulnerabilities of low severity or higher, or
 unavailable audit data; the [dependency policy](../README.md#dependency-updates) includes
 the separate ABI harness. The workflow then publishes the client with
@@ -25,8 +25,8 @@ neither committed nor uploaded from a developer's machine.
 
 Weekly validation runs on the latest default-branch commit every Monday at
 06:17 UTC (07:17 in winter and 08:17 in summer in Stockholm). It exercises
-the pinned Rust provider with the selected stable Rust and latest stable .NET
-SDK, and preserves the usual build provenance and logs. Its separate
+the Rust provider's current `master` branch with the selected stable Rust and
+latest stable .NET SDK, and preserves the usual build provenance and logs. Its separate
 concurrency group prevents scheduled validation from cancelling a push or
 manual run. GitHub may delay scheduled runs and automatically disables public
 repository schedules after 60 days without repository activity; see the
@@ -58,7 +58,7 @@ or confidential server-side store.
 
 ## Local static preview
 
-First build the pinned Rust library using the root README instructions. Then:
+First build the selected Rust library using the root README instructions. Then:
 
 ```sh
 python3 scripts/publish-pages.py --output /tmp/tax-pages-preview/swedish-tax-aspnet
@@ -74,5 +74,5 @@ This command only creates a local artifact; CI supplies the public deployment.
 TAX_APP_URL=http://127.0.0.1:5183/swedish-tax-aspnet/ pnpm test:browser
 ```
 
-See [Microsoft's Blazor Pages guide](https://learn.microsoft.com/en-us/aspnet/core/blazor/host-and-deploy/webassembly/github-pages?view=aspnetcore-10.0)
+See [Microsoft's Blazor Pages guide](https://learn.microsoft.com/en-us/aspnet/core/blazor/host-and-deploy/webassembly/github-pages?view=aspnetcore-11.0)
 and [GitHub's artifact deployment workflow](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).

@@ -19,18 +19,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Read native engine pin
+      - name: Read native engine configuration
         id: engine
         shell: bash
         run: |
           python3 - <<'PY'
           import json, os
-          pin = json.load(open('native-engine.json'))
+          engine = json.load(open('native-engine.json'))
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               for key in ('revision', 'rust_toolchain', 'target', 'dotnet_sdk'):
-                  output.write(key + '=' + pin[key] + '\n')
+                  output.write(key + '=' + engine[key] + '\n')
           with open(os.environ['GITHUB_ENV'], 'a') as environment:
-              environment.write('RUSTUP_TOOLCHAIN=' + pin['rust_toolchain'] + '\n')
+              environment.write('RUSTUP_TOOLCHAIN=' + engine['rust_toolchain'] + '\n')
           PY
       - uses: actions/checkout@v7
         with:
@@ -61,7 +61,7 @@ jobs:
           dotnet restore SwedishTax.slnx --force
           dotnet restore tests/RustPInvoke/RustPInvoke.csproj --force
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
-      - name: Build pinned Rust C ABI and verify generated declarations and fixtures
+      - name: Build shared Rust C ABI and verify generated declarations and fixtures
         run: python3 scripts/build-native-engine.py --source .rust-provider
       - name: Rust C ABI and reference contract tests
         run: cargo test --manifest-path .rust-provider/Cargo.toml -p swedish-tax-ios -p xtask --locked

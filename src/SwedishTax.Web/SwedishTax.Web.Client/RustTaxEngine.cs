@@ -18,8 +18,11 @@ public sealed class RustTaxEngine(IJSRuntime js) : IRustTaxEngine
     // P/Invoke runs synchronously in the same WebAssembly runtime and memory.
     public ValueTask<EngineResponse> CalculateAsync(byte table, TaxAgeGroup ageGroup, IncomePlan plan) =>
         ValueTask.FromResult(NativeCalculator.Calculate(table, ageGroup, plan));
+    // Home.razor catches propagated JSException to preserve saved data and show recovery UI.
+#pragma warning disable BL0016
     public ValueTask<string?> LoadWorkspaceAsync() =>
         js.InvokeAsync<string?>("localStorage.getItem", StorageKey);
     public ValueTask SaveWorkspaceAsync(string workspace) =>
         js.InvokeVoidAsync("localStorage.setItem", StorageKey, workspace);
+#pragma warning restore BL0016
 }

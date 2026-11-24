@@ -27,19 +27,19 @@ def main():
     args = parser.parse_args()
     source = args.rust_source.resolve()
     output = args.output.resolve()
-    pin = json.loads((REPOSITORY / "native-engine.json").read_text())
+    engine = json.loads((REPOSITORY / "native-engine.json").read_text())
     env = os.environ.copy()
-    env.setdefault("RUSTUP_TOOLCHAIN", pin["rust_toolchain"])
+    env.setdefault("RUSTUP_TOOLCHAIN", engine["rust_toolchain"])
     version = subprocess.check_output(["rustc", "--version"], env=env, text=True).strip()
     expected_version = subprocess.check_output(
-        ["rustup", "run", pin["rust_toolchain"], "rustc", "--version"], text=True,
+        ["rustup", "run", engine["rust_toolchain"], "rustc", "--version"], text=True,
     ).strip()
     if version != expected_version:
-        raise SystemExit("Select RUSTUP_TOOLCHAIN=" + pin["rust_toolchain"])
+        raise SystemExit("Select RUSTUP_TOOLCHAIN=" + engine["rust_toolchain"])
     os.environ["RUSTUP_TOOLCHAIN"] = env["RUSTUP_TOOLCHAIN"]
     sdk = subprocess.check_output([args.dotnet, "--version"], text=True).strip()
-    if int(sdk.split(".", 1)[0]) < 10:
-        raise SystemExit("This test harness requires .NET SDK 10 or later with the wasm-tools workload.")
+    if int(sdk.split(".", 1)[0]) < 11:
+        raise SystemExit("This test harness requires .NET SDK 11 or later with the wasm-tools workload.")
 
     obj = HERE / "obj"
     obj.mkdir(exist_ok=True)
@@ -66,7 +66,7 @@ def main():
     if counts != {"cases": 1182, "annualCases": 336, "profileCases": 112, "planCases": 120}:
         raise SystemExit(f"Unexpected native fixture counts: {counts}")
 
-    # Use the same pinned artifact and compiler settings as the application.
+    # Use the same shared artifact and compiler settings as the application.
     run([sys.executable, REPOSITORY / "scripts/build-native-engine.py", "--source", source])
     run([args.dotnet, "publish", HERE, "-c", "Release", "-o", output, "--nologo",
          "-p:RustLibraryPath=" + str(REPOSITORY / "artifacts/native/libswedish_tax_ios.a")])
@@ -74,7 +74,7 @@ def main():
     revision = subprocess.check_output(["git", "-C", source, "rev-parse", "HEAD"], text=True).strip()
     dirty = bool(subprocess.check_output(["git", "-C", source, "status", "--porcelain"], text=True))
     (output / "build-info.json").write_text(json.dumps({
-        "rustSourceCommit": revision, "rustSourceDirty": dirty,
+        "rustSourceRef": engine["revision"], "rustSourceCommit": revision, "rustSourceDirty": dirty,
         "rustCompiler": version, "dotnetSdk": sdk, "referenceCases": counts,
     }, indent=2) + "\n")
     print(f"Serve with: python3 -m http.server 5182 --bind 127.0.0.1 --directory {shlex.quote(str(output / 'wwwroot'))}")

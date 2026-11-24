@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/qpernil/swedish-tax",
-  "revision": "3eb4bed49d8b26024f023146b90cac7ecaf60c58",
+  "revision": "master",
   "rust_toolchain": "stable",
   "target": "wasm32-unknown-emscripten",
   "dotnet_sdk": "latest",

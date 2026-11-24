@@ -18,19 +18,19 @@ def main():
     parser.add_argument("--source", type=Path, default=ROOT.parent / "swedish-tax")
     args = parser.parse_args()
     source = args.source.resolve()
-    pin = json.loads((ROOT / "native-engine.json").read_text())
+    engine = json.loads((ROOT / "native-engine.json").read_text())
     env = os.environ.copy()
     # Keep the selected toolchain when entering the provider workspace.
-    env.setdefault("RUSTUP_TOOLCHAIN", pin["rust_toolchain"])
+    env.setdefault("RUSTUP_TOOLCHAIN", engine["rust_toolchain"])
     rustc = subprocess.check_output(["rustc", "--version"], env=env, text=True).strip()
     expected_rustc = subprocess.check_output(
-        ["rustup", "run", pin["rust_toolchain"], "rustc", "--version"],
+        ["rustup", "run", engine["rust_toolchain"], "rustc", "--version"],
         text=True,
     ).strip()
     if rustc != expected_rustc:
-        raise SystemExit("Select RUSTUP_TOOLCHAIN=" + pin["rust_toolchain"])
+        raise SystemExit("Select RUSTUP_TOOLCHAIN=" + engine["rust_toolchain"])
     revision = subprocess.check_output(["git", "-C", source, "rev-parse", "HEAD"], text=True).strip()
-    expected = subprocess.check_output(["git", "-C", source, "rev-parse", pin["revision"]], text=True).strip()
+    expected = subprocess.check_output(["git", "-C", source, "rev-parse", engine["revision"]], text=True).strip()
     if revision != expected or subprocess.check_output(["git", "-C", source, "status", "--porcelain"], text=True).strip():
         raise SystemExit("Rust source must be clean at the revision in native-engine.json")
     run([sys.executable, ROOT / "tests/RustPInvoke/generate-bindings.py", "--header", source / "ios-ffi/include/SwedishTaxFFI.h", "--check"])
@@ -38,7 +38,7 @@ def main():
     checked = ROOT / "tests/fixtures"
     if {p.name: p.read_bytes() for p in fixtures.glob("*.json")} != {p.name: p.read_bytes() for p in checked.glob("*.json")}:
         raise SystemExit("Shared Rust fixture drift; review and synchronize consumer tests/fixtures from provider tests/fixtures")
-    if pin["target"] != "wasm32-unknown-emscripten":
+    if engine["target"] != "wasm32-unknown-emscripten":
         raise SystemExit("cargo xtask wasm requires the wasm32-unknown-emscripten target")
     artifacts = ROOT / "artifacts"
     native = artifacts / "native"
@@ -51,11 +51,11 @@ def main():
     shutil.copyfile(artifacts / f"host/release/libswedish_tax_ios.{suffix}", native / f"libswedish_tax_ios.{suffix}")
     env["CARGO_TARGET_DIR"] = str(artifacts / "xtask")
     run(["cargo", "xtask", "wasm", "--release", "--target-dir", artifacts / "rust",
-         "--output", native, "--rustflags", pin["rustflags"]], cwd=source, env=env)
+         "--output", native, "--rustflags", engine["rustflags"]], cwd=source, env=env)
     if subprocess.check_output(["git", "-C", source, "rev-parse", "HEAD"], text=True).strip() != revision \
             or subprocess.check_output(["git", "-C", source, "status", "--porcelain"], text=True).strip():
         raise SystemExit("Rust source changed during the build; review and commit the provider before rebuilding")
-    (native / "build-info.json").write_text(json.dumps({**pin, "revision": revision, "rustc": rustc}, indent=2) + "\n")
+    (native / "build-info.json").write_text(json.dumps({**engine, "source_ref": engine["revision"], "revision": revision, "rustc": rustc}, indent=2) + "\n")
     print(f"Built current C ABI at {revision}")
 
 if __name__ == "__main__":

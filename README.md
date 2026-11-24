@@ -58,7 +58,7 @@ plans are preserved until the user explicitly replaces them.
   interop in the application service is limited to local storage.
 - `tests/SwedishTax.Core.Tests`: native calculation parity, reference DTOs,
   saved inputs, and calculation revisions.
-- `tests/fixtures`: 17 checked-in copies of the pinned Rust provider's input/result
+- `tests/fixtures`: 17 checked-in copies of the selected Rust provider's input/result
   fixtures; the native-engine build requires an exact match.
 - `tests/browser`: published calculator workflows in Chromium, Firefox and WebKit.
 - `tests/RustPInvoke`: all 10 C exports, 21 structure layouts, native/browser
@@ -69,17 +69,17 @@ compatibility, supported tooling and the provider-update workflow.
 
 ## Build and run
 
-Use .NET SDK 10 or later with the workloads required by the .NET 10 projects
+Use .NET SDK 11 or later with the workloads required by the .NET 11 projects
 and stable Rust.
 `global.json` selects the latest installed stable SDK; CI installs the latest
-stable SDK. Application projects target .NET 10. Install the workload for the
+stable SDK. Application projects target .NET 11. Install the workload for the
 selected SDK when changing SDK feature bands. `dotnet workload restore` selects
-the tools for the project target, including `wasm-tools-net10` when using a
-newer SDK. The build
-requires a clean `swedish-tax` checkout at the revision in `native-engine.json`;
-the default location is adjacent to this repository. Generated libraries live
+the tools for the project target, including when using a newer SDK. The build
+requires a clean `swedish-tax` checkout at the `master` branch selected in
+`native-engine.json`; the default location is adjacent to this repository. Generated libraries live
 in ignored `artifacts/` directories. `scripts/build-native-engine.py` verifies
-the pin, declarations and fixture copies, builds the host test library, and invokes
+the selected source, declarations and fixture copies, builds the host test
+library, and invokes
 the provider's `cargo xtask wasm` to compile the WebAssembly C library.
 `dotnet build`/`publish` link that library into the browser runtime.
 
